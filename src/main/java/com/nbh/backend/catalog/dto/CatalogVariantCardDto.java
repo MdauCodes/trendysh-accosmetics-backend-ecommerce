@@ -90,7 +90,12 @@ public record CatalogVariantCardDto(
          * Units sold in the last 30 days, counting nothing before the shop opened (owner, 2026-10-28: "Popular" shows only
          * real sales, and test orders before the launch never count). {@code unitsSold} counts every sale since the opening.
          */
-        BigDecimal recentUnitsSold
+        BigDecimal recentUnitsSold,
+        /**
+         * When the product or this option was last changed, whichever is later: the "last modified" date the shop's
+         * sitemap gives search engines, so a page is marked changed only when it was (owner, 2026-11-01: SEO).
+         */
+        Instant updatedAt
 ) {
     /** True for a variant name that adds no information beyond the product name itself. */
     public static boolean isMeaninglessName(String variantName) {

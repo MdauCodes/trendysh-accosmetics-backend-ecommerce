@@ -255,7 +255,15 @@ public class CatalogService {
                 cover == null ? null : cover.focus(), v.isPackage(),
                 // A deal picture staff chose, only while the product's own flash deal is live (not a site-wide campaign).
                 price.source() == EffectivePriceResolver.Source.PRODUCT_DEAL ? dealPhotoByVariant.get(v.getId()) : null,
-                recentByVariant.getOrDefault(v.getId(), BigDecimal.ZERO));
+                recentByVariant.getOrDefault(v.getId(), BigDecimal.ZERO),
+                later(p.getUpdatedAt(), v.getUpdatedAt()));
+    }
+
+    /** The later of two moments, either of which may be missing. */
+    static Instant later(Instant a, Instant b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.isAfter(b) ? a : b;
     }
 
     /** An option's cover photo and where on it the part that changes sits ("x% y%", V66; null = the middle). */
