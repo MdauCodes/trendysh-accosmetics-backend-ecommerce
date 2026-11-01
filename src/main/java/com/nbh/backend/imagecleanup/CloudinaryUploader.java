@@ -27,6 +27,11 @@ import java.util.stream.Collectors;
  * Server-side signed upload/delete to Cloudinary — the backend produces these images itself, so unlike staff
  * uploads (signed here, sent from the browser) it has to send them. Plain HTTP with the same SHA-1 signing the
  * rest of the app uses; no Cloudinary SDK.
+ *
+ * <p>Since the move off Cloudinary (Nov 2026) it is the one place every photo the backend makes is stored: with photo
+ * storage set to "s3" ({@link S3PhotoStore#active()}) a photo goes to the shop's own bucket instead, and its "public id" is
+ * then the bucket key (it has a file extension; a Cloudinary id never does). Nothing is ever deleted from Cloudinary while
+ * the bucket is in use: Cloudinary keeps every old photo as the way back.
  */
 @Slf4j
 @Service
@@ -34,8 +39,12 @@ public class CloudinaryUploader {
 
     public record Uploaded(String url, String publicId) {}
 
+    private static final java.util.regex.Pattern BUCKET_KEY = java.util.regex.Pattern.compile(".+\\.[A-Za-z0-9]{2,5}$");
+
     private final ImageCleanupConfig config;
     private final IntegrationSettingsService settings;
+    /** Null only in tests that exercise the Cloudinary side alone. */
+    private final S3PhotoStore bucket;
     /**
      * With timeouts: a hung upload used to wait forever, so the variant-job worker running it was never given back
      * (three of those and every later job sat queued with no error). Same limits as the Gemini clients.
@@ -50,9 +59,25 @@ public class CloudinaryUploader {
         return new RestTemplate(factory);
     }
 
-    public CloudinaryUploader(ImageCleanupConfig config, IntegrationSettingsService settings) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public CloudinaryUploader(ImageCleanupConfig config, IntegrationSettingsService settings, S3PhotoStore bucket) {
         this.config = config;
         this.settings = settings;
+        this.bucket = bucket;
+    }
+
+    public CloudinaryUploader(ImageCleanupConfig config, IntegrationSettingsService settings) {
+        this(config, settings, null);
+    }
+
+    /** New photos go to the shop's own bucket rather than Cloudinary. */
+    public boolean bucketActive() {
+        return bucket != null && bucket.active();
+    }
+
+    /** The bucket key behind one of the photo server's addresses, or empty for any other address. */
+    public java.util.Optional<String> bucketKeyOf(String url) {
+        return bucket == null ? java.util.Optional.empty() : bucket.keyOf(url);
     }
 
     /** The account's cloud name, or blank when Cloudinary isn't set up. Photos on any other host are not ours to delete. */
@@ -68,6 +93,9 @@ public class CloudinaryUploader {
     public boolean isOwnUrl(String url) {
         if (url == null || url.isBlank()) {
             return false;
+        }
+        if (bucketKeyOf(url.trim()).isPresent()) {
+            return true;
         }
         String cloud = cloudName();
         if (cloud != null && !cloud.isBlank() && url.startsWith("https://res.cloudinary.com/" + cloud + "/")) {
@@ -95,12 +123,22 @@ public class CloudinaryUploader {
         return settings.get(IntegrationKey.CLOUDINARY_API_SECRET);
     }
 
+    /** Photos can be stored: in the bucket when it is in use, else on Cloudinary. */
     public boolean configured() {
+        if (bucketActive()) {
+            return true;
+        }
         return settings.has(IntegrationKey.CLOUDINARY_CLOUD_NAME) && settings.has(IntegrationKey.CLOUDINARY_API_KEY)
                 && settings.has(IntegrationKey.CLOUDINARY_API_SECRET);
     }
 
     public Uploaded upload(byte[] png, String folder, String publicId) {
+        if (bucketActive()) {
+            S3PhotoStore.ImageType type = S3PhotoStore.imageType(png)
+                    .orElseThrow(() -> new IllegalArgumentException("That file is not a picture (PNG, JPEG, WebP, GIF or AVIF)."));
+            String key = folder + "/" + publicId + "." + type.extension();
+            return new Uploaded(bucket.put(key, png, type.contentType()), key);
+        }
         requireConfigured();
         long timestamp = System.currentTimeMillis() / 1000;
         Map<String, String> signed = new TreeMap<>();
@@ -109,7 +147,8 @@ public class CloudinaryUploader {
         signed.put("timestamp", String.valueOf(timestamp));
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("file", "data:image/png;base64," + Base64.getEncoder().encodeToString(png));
+        String mime = S3PhotoStore.imageType(png).map(S3PhotoStore.ImageType::contentType).orElse("image/png");
+        form.add("file", "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(png));
         form.add("api_key", apiKey());
         signed.forEach(form::add);
         form.add("signature", sign(signed));
@@ -125,7 +164,16 @@ public class CloudinaryUploader {
 
     /** Best effort: a failure to delete is logged, never thrown — the database state is what matters. */
     public void delete(String publicId) {
-        if (!configured() || publicId == null || publicId.isBlank()) {
+        if (publicId == null || publicId.isBlank()) {
+            return;
+        }
+        if (BUCKET_KEY.matcher(publicId).matches()) {
+            if (bucket != null) bucket.delete(publicId);
+            return;
+        }
+        // a Cloudinary photo: kept there for good once the bucket is in use (it is the way back)
+        if (bucketActive() || !settings.has(IntegrationKey.CLOUDINARY_CLOUD_NAME) || !settings.has(IntegrationKey.CLOUDINARY_API_KEY)
+                || !settings.has(IntegrationKey.CLOUDINARY_API_SECRET)) {
             return;
         }
         try {

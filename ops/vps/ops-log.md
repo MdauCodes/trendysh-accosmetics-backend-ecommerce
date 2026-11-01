@@ -86,3 +86,9 @@ Google's and Cloudflare's resolvers. `EDGE_PUBLIC=true` in `.env` (backup `.env.
 both names (valid to 30 Jan 2027). From outside: a photo is a WebP with `Cache-Control: public, max-age=31536000, immutable`, MISS then HIT;
 a missing photo is a 302 to Cloudinary; an unknown width 404; http redirects to https; anonymous S3 listing 403.
 To take it off the internet again: `EDGE_PUBLIC=false` in `.env` and the same `up -d --no-deps edge` (the frontend then falls back to Cloudinary per photo).
+
+**22:30 EAT bucket keys (owner approved in chat).** Garage key `nbh-backend` (read/write on `nbh-media` only) for the backend's photo
+storage, and a test bucket `nbh-test` with its own key `nbh-backend-test` (read/write on `nbh-test` only) for end-to-end tests that must
+never touch the shop's photos. Both secrets are only in `/opt/nbh/keys/*.env` (mode 600, root). The owner reads the backend key with
+`cat /opt/nbh/keys/nbh-backend.env` over SSH and pastes it into Admin > Settings > Integrations > Photo storage.
+To take them away: `docker exec nbh-garage /garage key delete --yes <name>`; `docker exec nbh-garage /garage bucket delete --yes nbh-test`.

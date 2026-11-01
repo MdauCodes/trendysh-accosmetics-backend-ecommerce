@@ -6,6 +6,10 @@ public enum IntegrationKey {
     CLOUDINARY_CLOUD_NAME("Cloudinary cloud name", false),
     CLOUDINARY_API_KEY("Cloudinary API key", true),
     CLOUDINARY_API_SECRET("Cloudinary API secret", true),
+    /** "s3" stores new photos in the shop's own bucket (the photo server), anything else on Cloudinary. See S3PhotoStore. */
+    PHOTO_STORAGE("Photo storage (s3 or cloudinary)", false),
+    PHOTO_S3_ACCESS_KEY("Photo bucket access key", false),
+    PHOTO_S3_SECRET_KEY("Photo bucket secret key", true),
     /** Render's deploy hook for the storefront: asking it to rebuild refreshes the pages search engines read. */
     STOREFRONT_DEPLOY_HOOK_URL("Storefront deploy hook", true);
 

@@ -33,7 +33,10 @@ public class IntegrationSettingsService {
                                       @Value("${app.cloudinary.cloud-name:}") String cloudName,
                                       @Value("${app.cloudinary.api-key:}") String cloudKey,
                                       @Value("${app.cloudinary.api-secret:}") String cloudSecret,
-                                      @Value("${app.storefront.deploy-hook-url:}") String deployHook) {
+                                      @Value("${app.storefront.deploy-hook-url:}") String deployHook,
+                                      @Value("${app.photos.storage:}") String photoStorage,
+                                      @Value("${app.photos.s3-access-key:}") String photoAccessKey,
+                                      @Value("${app.photos.s3-secret-key:}") String photoSecretKey) {
         this.repository = repository;
         this.cipher = cipher;
         this.env = Map.of(
@@ -41,7 +44,10 @@ public class IntegrationSettingsService {
                 IntegrationKey.CLOUDINARY_CLOUD_NAME, cloudName,
                 IntegrationKey.CLOUDINARY_API_KEY, cloudKey,
                 IntegrationKey.CLOUDINARY_API_SECRET, cloudSecret,
-                IntegrationKey.STOREFRONT_DEPLOY_HOOK_URL, deployHook);
+                IntegrationKey.STOREFRONT_DEPLOY_HOOK_URL, deployHook,
+                IntegrationKey.PHOTO_STORAGE, photoStorage,
+                IntegrationKey.PHOTO_S3_ACCESS_KEY, photoAccessKey,
+                IntegrationKey.PHOTO_S3_SECRET_KEY, photoSecretKey);
     }
 
     /** The effective value: dashboard first, environment second; empty when neither is set. */

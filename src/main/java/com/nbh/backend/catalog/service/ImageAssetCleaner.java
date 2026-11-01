@@ -116,7 +116,11 @@ public class ImageAssetCleaner {
 
     void deleteIfUnused(String url) {
         try {
-            Optional<String> publicId = publicIdOf(url, cloudinary.cloudName());
+            // a photo in the shop's own bucket (its key, extension and all), else one on Cloudinary (which the uploader
+            // keeps for good once the bucket is in use)
+            Optional<String> publicId = cloudinary.bucketKeyOf(url.trim())
+                    .filter(key -> OWN_FOLDERS.stream().anyMatch(key::startsWith))
+                    .or(() -> publicIdOf(url, cloudinary.cloudName()));
             if (publicId.isEmpty()) {
                 return;
             }

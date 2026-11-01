@@ -36,6 +36,13 @@ spring:
         # waiting out a slow network call must not hold the expiry sweeps back behind it.
         size: 4
 
+  servlet:
+    multipart:
+      # staff photo uploads go through the backend to the photo bucket (POST /admin/uploads/image); a phone camera's
+      # original can be 10 MB and more
+      max-file-size: 25MB
+      max-request-size: 26MB
+
 app:
   jwt:
     # DEV DEFAULT ONLY — override with a real random secret via JWT_SECRET before
@@ -163,6 +170,17 @@ app:
     cloud-name: ${CLOUDINARY_CLOUD_NAME:}
     api-key: ${CLOUDINARY_API_KEY:}
     api-secret: ${CLOUDINARY_API_SECRET:}
+  photos:
+    # The shop's own photo bucket (Garage on the Contabo server, ops/vps in this repo), replacing Cloudinary. New photos go
+    # there only when storage is "s3" and both keys are set (dashboard: Admin > Settings > Integrations, else these).
+    storage: ${PHOTO_STORAGE:}
+    s3-access-key: ${PHOTO_S3_ACCESS_KEY:}
+    s3-secret-key: ${PHOTO_S3_SECRET_KEY:}
+    s3-endpoint: ${PHOTO_S3_ENDPOINT:https://s3.trendyshaccosmetic.com}
+    s3-region: ${PHOTO_S3_REGION:garage}
+    bucket: ${PHOTO_S3_BUCKET:nbh-media}
+    # where the stored photos are served (imgproxy behind nginx): /o/<key> the original, /w<width>/<key> a copy
+    public-base-url: ${PHOTO_PUBLIC_BASE_URL:https://img.trendyshaccosmetic.com}
 
 server:
   port: ${PORT:8081}
