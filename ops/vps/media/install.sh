@@ -76,7 +76,7 @@ if [ ! -s imgproxy.env ]; then
   RO_ID=$(grep -m1 -i 'key id' keycreate.out | awk '{print $NF}')
   RO_SECRET=$(grep -m1 -i 'secret key' keycreate.out | awk '{print $NF}')
   if [ -z "$RO_ID" ] || [ -z "$RO_SECRET" ]; then echo "could not read the key Garage made (see keycreate.out)"; exit 1; fi
-  WIDTHS="64 72 96 128 160 200 240 320 360 400 480 640 720 960 1280 1600"
+  WIDTHS="64 72 96 128 160 200 240 320 360 400 480 640 720 960 1080 1280 1440 1600 1920"
   PRESETS="o=raw:1"
   for w in $WIDTHS; do PRESETS="$PRESETS,w$w=rs:fit:$w:0"; done
   cat > imgproxy.env <<EOF

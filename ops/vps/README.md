@@ -18,9 +18,11 @@ database without the owner's word.
 | `nbh-edge` | nginx: pretty addresses, a disk cache (10 GB), CORS, `s3.` host for the backend. The only NBH container on the shared `coolify` network | 512 MB, 1 CPU |
 
 Addresses it serves: `https://img.trendyshaccosmetic.com/o/<key>` (the stored original) and `/w<width>/<key>` (a WebP copy); the S3 API for
-the backend at `https://s3.trendyshaccosmetic.com`. A key is the Cloudinary path without its `v123` segment. **Not public until** the DNS
+the backend at `https://s3.trendyshaccosmetic.com`. A key is the Cloudinary path without its `v123` segment. **Public since 1 Nov 2026**: the DNS
 records `img` and `s3` (A records to 158.220.99.163, at Namecheap, Advanced DNS) exist and `EDGE_PUBLIC=true` is set in `/opt/nbh/media/.env`
 (`cd /opt/nbh/media && docker compose --env-file .env up -d edge`); the existing proxy then gets the two certificates by itself.
+A photo not in the bucket yet is a 302 to the same photo on Cloudinary (account dhgwijhdu). The same edge also serves `img.momentspackaging.com`
+from the `moments` bucket (a Moments session, 29 Oct): pull the server's files before changing any of them.
 
 Secrets (the store's read/write key, the read-only key imgproxy uses, Garage's RPC and admin tokens) are generated on the server by
 `install.sh` into root-only files (`.env`, `garage.toml`, `imgproxy.env`, mode 600) and are never printed or committed. The backend's key is
@@ -35,7 +37,7 @@ docker exec nbh-garage /garage status                              # the store's
 docker exec nbh-garage /garage bucket info nbh-media               # objects and size
 docker logs --tail 50 nbh-imgproxy                                 # image service
 # after changing a file in /opt/nbh/media/nginx (the folder is mounted whole, so a replaced file is seen):
-docker exec nbh-edge nginx -t -c /etc/nginx/nbh/nginx.conf && docker exec nbh-edge nginx -s reload
+docker exec nbh-edge nginx -t -c /etc/nginx/nbh/nginx.conf && docker exec nbh-edge nginx -c /etc/nginx/nbh/nginx.conf -s reload
 ```
 
 From the PC, with the owner's SSH key (key only, never a password): `ssh -i <key> root@158.220.99.163 'bash -s' < scripts/preflight.sh`

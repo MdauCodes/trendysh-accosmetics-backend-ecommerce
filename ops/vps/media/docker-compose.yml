@@ -25,7 +25,10 @@ services:
       - /opt/nbh/media/garage.toml:/etc/garage.toml:ro
       - /opt/nbh/media/data/meta:/var/lib/garage/meta
       - /opt/nbh/media/data/blocks:/var/lib/garage/data
-    networks: [nbh_media]
+    networks:
+      nbh_media: {}
+      coolify:
+        aliases: [media-s3]
     healthcheck:
       test: ["CMD", "/garage", "status"]
       interval: 30s
@@ -65,7 +68,7 @@ services:
     restart: unless-stopped
     # The configuration folder is mounted as a whole, not file by file: a file replaced on the host is not seen through a
     # single-file mount (it keeps pointing at the old file). After changing a file in /opt/nbh/media/nginx:
-    #   docker exec nbh-edge nginx -t -c /etc/nginx/nbh/nginx.conf && docker exec nbh-edge nginx -s reload
+    #   docker exec nbh-edge nginx -t -c /etc/nginx/nbh/nginx.conf && docker exec nbh-edge nginx -c /etc/nginx/nbh/nginx.conf -s reload
     command: ["nginx", "-c", "/etc/nginx/nbh/nginx.conf", "-g", "daemon off;"]
     volumes:
       - /opt/nbh/media/nginx:/etc/nginx/nbh:ro

@@ -43,9 +43,46 @@ was changed on the server after 09:07; the photo stack runs idle (not public, ab
 ### To undo all of it
 `cd /opt/nbh/media && docker compose down` (the photos stay in `data/` until deleted by hand), then `docker network rm nbh_media` if it is left, then `rm -rf /opt/nbh`.
 
-### Still to do on the server
+### Still to do on the server (26 Oct list; items 1 to 3 done 1 Nov)
 1. The owner adds DNS A records `img` and `s3` (trendyshaccosmetic.com) to 158.220.99.163 at Namecheap (Advanced DNS). Not there yet (checked 26 Oct 10:00).
 2. Set `EDGE_PUBLIC=true` in `/opt/nbh/media/.env`, `docker compose --env-file .env up -d edge`: Traefik then gets the two certificates (HTTP challenge).
 3. Check https from outside (certificate, CORS, headers).
 4. ~~Copy the photos from Cloudinary~~ done (above); what the public API does not show is for the backend job. Then an offsite backup of the bucket
    before Cloudinary is ever emptied (the owner decides where, later).
+
+## 1 Nov 2026 (step 0 of the move: photos served from the server, Cloudinary as fallback; owner approved in chat)
+
+The server's files had changed since 26 Oct (a Moments session, 29 Oct): `img.momentspackaging.com` is served by this same edge from a
+`moments` bucket, imgproxy reads full `s3://` addresses (`IMGPROXY_BASE_URL` empty, `ALLOWED_SOURCES` lists both buckets), and `nbh-garage`
+also joins the `coolify` network as `media-s3`. **The server is the source of truth: pull its files before changing them.** This repo's
+`media/` now holds the server's copies (pulled 1 Nov) plus today's changes.
+
+**16:09 EAT read-only look.** All containers healthy, proxy 0 restarts, bucket 2,311 objects, `EDGE_PUBLIC=false`. More projects run here now
+(steve-richard-safaris-web and several Coolify apps).
+
+**16:10 to 16:14 copy refresh** (`copy/run2`): the 2,692 addresses the public shop API shows today, run on the server as on 26 Oct (Cloudinary
+GET/HEAD only): 410 copied, 2,282 already there, 0 failed, 2,622 MB, 220 s. Decode check of all 2,692 through imgproxy: 0 problems.
+
+**16:15 imgproxy presets** w1080, w1440, w1920 added (the banners ask for them); backup `imgproxy.env.bak-20261101`; only `nbh-imgproxy` was
+recreated (`--no-deps`). install.sh's WIDTHS updated to match.
+
+**16:16:50 to 16:19:31 MISTAKE, put right.** The repo's (stale) nginx.conf was copied over the server's: the Moments host block was gone and the
+NBH paths lacked `s3://nbh-media/`. 5 Moments photo requests (one page view, 16:19:02) got a 404 before the server's own file was put back
+from `nginx.bak-20261101/` and reloaded; all five checked 200 afterwards, also publicly through Cloudflare. Note: reload is
+`nginx -c /etc/nginx/nbh/nginx.conf -s reload` (without `-c` nginx looks for the wrong pid file and does nothing).
+
+**16:25 Cloudinary fallback on the edge** (NBH host only; the Moments block is byte-identical): a photo not in the bucket is a 302 to the same
+photo on Cloudinary (`w_<n>,c_limit,q_auto,f_auto` for a width, the original for `/o/`), `Cache-Control: no-store`; a width without a preset
+is a plain 404. Tested first in a throwaway container `nbh-edge-trial` (both hosts, MISS/HIT, missing photo, bad width), then put live
+(previous file kept as `nginx.bak-20261101/nginx.conf.before-fallback`) and checked again on both hosts.
+
+### Undo today's changes
+`cp -p nginx.bak-20261101/nginx.conf.before-fallback nginx/nginx.conf` + reload; `cp -p imgproxy.env.bak-20261101 imgproxy.env` +
+`docker compose --env-file .env up -d --force-recreate --no-deps imgproxy`. The extra 410 photos in the bucket do no harm.
+
+**21:17 EAT made public.** The owner added the DNS A records `img` and `s3` -> 158.220.99.163 at Namecheap (TTL 1 min); seen by Namecheap's,
+Google's and Cloudflare's resolvers. `EDGE_PUBLIC=true` in `.env` (backup `.env.bak-20261101`), `docker compose --env-file .env up -d --no-deps edge`
+(only `nbh-edge` recreated, healthy after 10 s; img.momentspackaging.com answered 200 right after). Traefik got Let's Encrypt certificates for
+both names (valid to 30 Jan 2027). From outside: a photo is a WebP with `Cache-Control: public, max-age=31536000, immutable`, MISS then HIT;
+a missing photo is a 302 to Cloudinary; an unknown width 404; http redirects to https; anonymous S3 listing 403.
+To take it off the internet again: `EDGE_PUBLIC=false` in `.env` and the same `up -d --no-deps edge` (the frontend then falls back to Cloudinary per photo).
