@@ -45,9 +45,9 @@ public class CatalogService {
     /** How far back a card's recent sales go. */
     static final java.time.Duration RECENT_SALES = java.time.Duration.ofDays(30);
 
-    /** Sales before this never count as recent: the real shop opened on Monday 2 November 2026, 07:00 Nairobi. */
-    @org.springframework.beans.factory.annotation.Value("${app.shop.sales-count-from:2026-11-02T04:00:00Z}")
-    private Instant popularSince = Instant.parse("2026-11-02T04:00:00Z");
+    /** Sales before this never count as recent: the real shop opened on Monday 2 November 2026, 12:00 noon Nairobi. */
+    @org.springframework.beans.factory.annotation.Value("${app.shop.sales-count-from:2026-11-02T09:00:00Z}")
+    private Instant popularSince = Instant.parse("2026-11-02T09:00:00Z");
 
     /** The deal pictures staff chose (owner, 2026-10-24); optional so hand-built instances in unit tests still work. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)

@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CatalogServiceRecentSalesUnitTest {
 
-    private static final Instant OPENED = Instant.parse("2026-11-02T04:00:00Z");
+    private static final Instant OPENED = Instant.parse("2026-11-02T09:00:00Z");
 
     @Mock private ProductRepository productRepository;
     @Mock private ProductVariantRepository variantRepository;
