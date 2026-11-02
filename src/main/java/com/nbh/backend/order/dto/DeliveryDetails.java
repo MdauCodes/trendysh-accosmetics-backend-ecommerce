@@ -33,9 +33,6 @@ public record DeliveryDetails(
         DeliveryTimeWindow timeWindow
 ) {
 
-    /** TumaBoda's {@code location} is free text; this is the least a text column of that kind can be assumed to take. */
-    static final int MAX_LOCATION = 255;
-
     /** Not a field of the JSON: without this, Jackson would add an {@code "empty"} property to every response. */
     @JsonIgnore
     public boolean isEmpty() {
@@ -87,51 +84,6 @@ public record DeliveryDetails(
         o.setDeliveryInstructions(details == null ? null : details.instructions());
         o.setDeliveryReceiverName(details == null ? null : details.receiverName());
         o.setDeliveryTimeWindow(details == null ? null : details.timeWindow());
-    }
-
-    /**
-     * The delivery address as a TumaBoda rider should read it: the address the shopper picked, then what they added
-     * to help find the door (building, floor or door, street, estate, directions, a note). TumaBoda's
-     * {@code location} is one line of free text, so line breaks become separators and the whole is cut at
-     * {@value #MAX_LOCATION} characters rather than risk a refused booking over a long note.
-     */
-    public static String locationFor(String address, DeliveryDetails details) {
-        StringBuilder text = new StringBuilder(address == null ? "" : address.trim());
-        if (details != null) {
-            List<String> where = new ArrayList<>();
-            for (String part : new String[] {details.building(), details.unit(), details.street(), details.estate()}) {
-                if (part != null) {
-                    where.add(part);
-                }
-            }
-            append(text, String.join(", ", where));
-            append(text, flat(details.directions()));
-            String note = flat(details.instructions());
-            append(text, note == null ? null : "Note: " + note);
-        }
-        String line = text.toString();
-        if (line.length() <= MAX_LOCATION) {
-            return line;
-        }
-        int cut = MAX_LOCATION - 1;
-        if (Character.isHighSurrogate(line.charAt(cut - 1))) {
-            cut--; // never leave half of an emoji behind
-        }
-        return line.substring(0, cut).stripTrailing() + "…";
-    }
-
-    private static void append(StringBuilder text, String part) {
-        if (part == null || part.isEmpty()) {
-            return;
-        }
-        if (!text.isEmpty()) {
-            text.append(" — ");
-        }
-        text.append(part);
-    }
-
-    private static String flat(String lines) {
-        return lines == null ? null : lines.replace("\n", ", ");
     }
 
     /**

@@ -27,13 +27,6 @@ public record OrderSummaryDto(
         long itemCount,
         BigDecimal grandTotal,
         Instant createdAt,
-        /**
-         * Same signal as {@code AdminOrderDetailDto.Tumaboda.needsAttention} — a booking is stuck
-         * or TumaBoda reports the delivery failed — now surfaced at list level too (Phase 3,
-         * 2026-10-02) instead of only once staff open the order.
-         */
-        boolean needsAttention,
-        String tumabodaBookingFailure,
         /** Red-warning flag for the fulfilment queue — see {@link OrderUrgency}; filled in after the query. */
         boolean urgent,
         /** "From yesterday" or "Placed overnight" when {@link #urgent}, else null. */
@@ -54,10 +47,9 @@ public record OrderSummaryDto(
     /** The shape the JPQL constructor expression selects; urgency and the code status are worked out afterwards. */
     public OrderSummaryDto(UUID id, String orderNo, OrderStatus status, String customerName, String guestEmail,
                            String guestPhone, long itemCount, BigDecimal grandTotal, Instant createdAt,
-                           boolean needsAttention, String tumabodaBookingFailure,
                            FulfilmentType fulfilmentType, String deliveryAddress) {
         this(id, orderNo, status, customerName, guestEmail, guestPhone, itemCount, grandTotal, createdAt,
-                needsAttention, tumabodaBookingFailure, false, null, fulfilmentType,
+                false, null, fulfilmentType,
                 fulfilmentType == FulfilmentType.PICKUP && deliveryAddress != null && !deliveryAddress.isBlank()
                         ? deliveryAddress.trim() : null,
                 null);
@@ -66,13 +58,13 @@ public record OrderSummaryDto(
     public OrderSummaryDto withUrgency(Instant now) {
         String reason = OrderUrgency.reason(createdAt, now);
         return new OrderSummaryDto(id, orderNo, status, customerName, guestEmail, guestPhone, itemCount, grandTotal,
-                createdAt, needsAttention, tumabodaBookingFailure, reason != null, reason, fulfilmentType,
+                createdAt, reason != null, reason, fulfilmentType,
                 pickupPlace, paymentCode);
     }
 
     public OrderSummaryDto withPaymentCode(String code) {
         return new OrderSummaryDto(id, orderNo, status, customerName, guestEmail, guestPhone, itemCount, grandTotal,
-                createdAt, needsAttention, tumabodaBookingFailure, urgent, urgentReason, fulfilmentType,
+                createdAt, urgent, urgentReason, fulfilmentType,
                 pickupPlace, code);
     }
 }

@@ -34,13 +34,13 @@ class EmailTemplatesUnitTest {
                 "https://example.com/trendysh-logo.png", "Njeri", "Your order is saved, one more step",
                 "Pay with M-PESA Paybill, then type the code.",
                 List.of(new Fact("Business number", "400200"), new Fact("Account number", "NJERI <B>")),
-                List.of(new Line("Gel Polish (Ruby Red) × 2", "KSh 1,300"), new Line("TumaBoda delivery", "KSh 250")),
+                List.of(new Line("Gel Polish (Ruby Red) × 2", "KSh 1,300"), new Line("Delivery", "KSh 250")),
                 "Total", "KSh 1,550", "Pay and enter my M-PESA code", "https://shop.example/pay/SO-1?ref=ABC&x=1",
                 "Questions? WhatsApp us.");
 
         assertThat(html).startsWith("<!DOCTYPE html>").contains("</html>");
         assertThat(html).contains("Hi Njeri,", "Your order is saved, one more step", "Business number", "400200");
-        assertThat(html).contains("Gel Polish (Ruby Red) × 2", "KSh 1,300", "TumaBoda delivery", "KSh 250", "KSh 1,550");
+        assertThat(html).contains("Gel Polish (Ruby Red) × 2", "KSh 1,300", "Delivery", "KSh 250", "KSh 1,550");
         // A button is a link the shopper can follow, and its URL is escaped like any other attribute.
         assertThat(html).contains("href=\"https://shop.example/pay/SO-1?ref=ABC&amp;x=1\"", "Pay and enter my M-PESA code");
         assertThat(html).contains("Questions? WhatsApp us.");

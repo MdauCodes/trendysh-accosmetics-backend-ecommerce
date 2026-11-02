@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 /**
- * TumaBoda/matatu/courier integration, backend half (2026-09-28): who was actually
+ * Rider/matatu/courier delivery, backend half (2026-09-28): who was actually
  * assigned to carry a DELIVERY_COURIER order, and the price agreed by phone, is now
  * recorded rather than living only in a staff member's memory of the call.
  */

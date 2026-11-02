@@ -19,9 +19,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Bank credits: money seen in the account, from staff reading the statement now
- * and from the bank's notification / reconciliation job later (same entry
- * point, so those steps plug straight in). Every credit is kept forever, and
+ * Bank credits: money seen in the account, from staff reading the statement.
+ * Every credit is kept forever, and
  * one that cannot be matched with certainty is left UNMATCHED for staff rather
  * than guessed at, because a wrongly confirmed order ships goods for money that
  * belongs to someone else.
@@ -57,16 +56,6 @@ public class BankCreditService {
     @Transactional
     public BankCredit record(String bankTxnId, BigDecimal amount, String payerName, String payerPhone,
                              String narration, Instant receivedAt, BankCredit.Source source) {
-        return record(bankTxnId, amount, payerName, payerPhone, narration, receivedAt, source, true);
-    }
-
-    /**
-     * {@code autoMatch=false} records the credit and leaves it UNMATCHED for staff to allocate. Used for a feed
-     * we have not yet verified against the real bank: recording is always safe, confirming an order is not.
-     */
-    @Transactional
-    public BankCredit record(String bankTxnId, BigDecimal amount, String payerName, String payerPhone,
-                             String narration, Instant receivedAt, BankCredit.Source source, boolean autoMatch) {
         String txnId = bankTxnId.trim();
         BankCredit existing = creditRepository.findByBankTxnId(txnId).orElse(null);
         if (existing != null) {
@@ -83,9 +72,7 @@ public class BankCreditService {
         credit.setSource(source);
         credit = creditRepository.save(credit);
 
-        if (autoMatch) {
-            tryAutoMatch(credit);
-        }
+        tryAutoMatch(credit);
         // confirmAndMatch (inside tryAutoMatch) mutates this same object, so its status already
         // reflects whether the auto-match actually landed — a plain "money arrived" hint either way.
         boolean matched = credit.getStatus() == BankCredit.CreditStatus.MATCHED;
@@ -110,7 +97,7 @@ public class BankCreditService {
                 .orElseThrow(() -> new ConflictException(
                         "Order " + orderNo + " has no unpaid bank payment to allocate this credit to"));
         // Locked, then re-checked: the scalar query above can go stale the instant it runs (a claim
-        // approval or a callback confirming this exact payment right now), the same way an unlocked
+        // approval confirming this exact payment right now), the same way an unlocked
         // findByOrderId used to — see confirmAndMatch's callers for why nothing is decided before this.
         PaymentRecord payment = paymentRecordRepository.lockById(paymentId).orElseThrow();
         boolean reviving = payment.getStatus() == PaymentRecord.PaymentStatus.FAILED;
@@ -155,7 +142,7 @@ public class BankCreditService {
                 continue;
             }
             // Locked before its status or amount is read, not after: this reference might belong to a
-            // payment a claim approval, a Co-op callback or a staff allocation is confirming at this exact
+            // payment a claim approval or a staff allocation is confirming at this exact
             // moment, and reading it unlocked could see a stale INITIATED — the same "already paid" it
             // would otherwise correctly refuse below, only missed because the row had already moved on.
             PaymentRecord payment = paymentRecordRepository.lockById(paymentId).orElseThrow();

@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * A payment reference in a bank narration might belong to a payment something ELSE is confirming at this
- * exact moment (a claim approval, a Co-op callback, a plain M-Pesa callback). The bug an earlier version of
+ * exact moment (a claim approval, a staff confirmation). The bug an earlier version of
  * {@code BankCreditService} had: it read the payment UNLOCKED, decided from that stale snapshot that it was
  * still unpaid, and only THEN called {@code confirmSuccess} — which correctly no-ops on an already-SUCCESS
  * row (it has its own lock and its own idempotent early return), so the payment and order were never

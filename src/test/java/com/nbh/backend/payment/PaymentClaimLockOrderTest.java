@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 /**
  * Confirming a payment takes its locks payment, then order, then stock. A customer's "I've paid" claim
  * extends the stock holds, so if it took the stock locks first and the payment row afterwards it could
- * sit between two staff/callback confirmations of the same payment, each holding what the other needs
+ * sit between two staff confirmations of the same payment, each holding what the other needs
  * next: a deadlock, which Postgres resolves by failing one of the two. This pins the order: while
  * something else holds the payment's row lock (as a confirmation would), a claim must not have touched
  * the stock holds yet.

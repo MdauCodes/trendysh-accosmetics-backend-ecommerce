@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Spring Boot runs every {@code @Scheduled} job on ONE thread unless told otherwise. With the expiry
- * sweeps and the TumaBoda jobs sharing it, a poll stuck on a slow network call would hold the sweeps back.
+ * sweeps and the other jobs sharing it, a job stuck on a slow network call would hold the sweeps back.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

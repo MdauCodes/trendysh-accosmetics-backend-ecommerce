@@ -59,7 +59,6 @@ class CheckoutServiceUnitTest {
     @Mock private StockReservationService reservationService;
     @Mock private OrderNoGenerator orderNoGenerator;
     @Mock private ApplicationEventPublisher eventPublisher;
-    @Mock private com.nbh.backend.tumaboda.TumaBodaQuoteService quoteService;
     @Mock private com.nbh.backend.packages.service.PackageService packageService;
     @Mock private VariantCovers variantCovers;
 
@@ -73,8 +72,8 @@ class CheckoutServiceUnitTest {
     void setUp() {
         checkoutService = new CheckoutService(cartRepository, cartItemRepository,
                 orderRepository, paymentRecordRepository, reservationService,
-                orderNoGenerator, clock, eventPublisher, new PaymentReferenceGenerator(), bankSettings(BANK),
-                MAX_OPEN_ORDERS, quoteService, packageService, variantCovers);
+                orderNoGenerator, clock, eventPublisher, new PaymentReferenceGenerator(), bankSettings(),
+                MAX_OPEN_ORDERS, packageService, variantCovers);
 
         cart = new Cart();
         cart.setId(UUID.randomUUID());
@@ -98,7 +97,6 @@ class CheckoutServiceUnitTest {
                 .thenReturn(new com.nbh.backend.packages.service.PackageService.Selection(List.of(), false));
     }
 
-    private static final BankPaymentSettings.CollectionMode BANK = BankPaymentSettings.CollectionMode.BANK;
     private static final int MAX_OPEN_ORDERS = 3;
 
     @Test
@@ -247,11 +245,11 @@ class CheckoutServiceUnitTest {
         verify(variantCovers, times(1)).urlsFor(argThat(variants -> variants.size() == 3));
     }
 
-    // Checkout only ever reads mode()/paymentWindow() from this, never the bank-detail accessors,
+    // Checkout only ever reads paymentWindow() from this, never the bank-detail accessors,
     // so the settings repository doesn't need a real row backing it for these tests.
-    private static BankPaymentSettings bankSettings(BankPaymentSettings.CollectionMode mode) {
+    private static BankPaymentSettings bankSettings() {
         return new BankPaymentSettings(
-                mock(com.nbh.backend.payment.repository.PaymentSettingsRepository.class), mode, 45, "<ref>");
+                mock(com.nbh.backend.payment.repository.PaymentSettingsRepository.class), 45, "<ref>");
     }
 
     @Test
@@ -268,24 +266,6 @@ class CheckoutServiceUnitTest {
         assertThat(payment.getExpiresAt()).isEqualTo(Instant.parse("2026-01-01T00:45:00Z"));
         verify(reservationService).reserve(any(), any(), any(), any(), any(),
                 org.mockito.ArgumentMatchers.eq(Instant.parse("2026-01-01T00:45:00Z")));
-    }
-
-    @Test
-    void mpesaModeKeepsTheDarajaRecordAndTheShortFifteenMinuteHold() {
-        checkoutService = new CheckoutService(cartRepository, cartItemRepository,
-                orderRepository, paymentRecordRepository, reservationService,
-                orderNoGenerator, clock, eventPublisher, new PaymentReferenceGenerator(),
-                bankSettings(BankPaymentSettings.CollectionMode.MPESA), MAX_OPEN_ORDERS, quoteService, packageService,
-                variantCovers);
-        when(cartItemRepository.findByCartId(cart.getId()))
-                .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-
-        var payment = checkoutService.checkout(SESSION_ID, request()).paymentRecord();
-
-        assertThat(payment.getProvider()).isEqualTo("DARAJA");
-        assertThat(payment.getPaymentReference()).isNull();
-        verify(reservationService).reserve(any(), any(), any(), any(), any(),
-                org.mockito.ArgumentMatchers.eq(Instant.parse("2026-01-01T00:15:00Z")));
     }
 
     /** A product of a package as it comes (nothing picked instead): the package's own variant for it and the variant packed are one. */
@@ -361,7 +341,7 @@ class CheckoutServiceUnitTest {
         customer.setId(UUID.randomUUID());
 
         var request = new CheckoutRequest("Test Customer", "n@example.com", "254700000000",
-                FulfilmentType.DELIVERY_COURIER, "Super Metro — kencom", "MATATU", null, null, null, null, null, null,
+                FulfilmentType.DELIVERY_COURIER, "Super Metro — kencom", "MATATU", null, null, null, null,
                 null, null, new CheckoutRequest.Transport(operatorId, "kencom"), "{\"mode\":\"metro\"}");
         var order = checkoutService.checkout(SESSION_ID, request, customer, CheckoutService.Placement.SHOPPER).order();
 
@@ -377,7 +357,7 @@ class CheckoutServiceUnitTest {
                 .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
 
         var request = new CheckoutRequest("Test Customer", "n@example.com", "254700000000", FulfilmentType.PICKUP,
-                null, null, null, null, null, null, null, null, "2026-10-28", "2026-10-27");
+                null, null, null, null, null, null, "2026-10-28", "2026-10-27");
         var order = checkoutService.checkout(SESSION_ID, request).order();
 
         assertThat(order.getTermsVersion()).isEqualTo("2026-10-28");
@@ -407,71 +387,15 @@ class CheckoutServiceUnitTest {
         assertThat(checkoutService.checkout(SESSION_ID, request).order().getDeliveryMethod()).isNull();
     }
 
-    private CheckoutRequest tumabodaRequest(BigDecimal lat, BigDecimal lng) {
-        return new CheckoutRequest("Njeri Test", "n@example.com", "0720 000 111", FulfilmentType.DELIVERY_COURIER,
-                "Riverside Court, Kilimani", "BODA", lat, lng);
-    }
-
     @Test
-    void aTumabodaApiDeliveryAddsTheServersQuotedFeeToTheTotalAndKeepsTheDropoffPoint() {
+    void aRiderDeliveryAddsNothingToTheTotal() {
         when(cartItemRepository.findByCartId(cart.getId()))
                 .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-        when(quoteService.enabled()).thenReturn(true);
-        when(quoteService.quote(any(), any(), any())).thenReturn(new com.nbh.backend.tumaboda.TumaBodaDtos.Quote(
-                new BigDecimal("350.00"), new BigDecimal("50.00"), new BigDecimal("4.2"), 25));
 
-        var order = checkoutService.checkout(SESSION_ID,
-                tumabodaRequest(new BigDecimal("-1.2921"), new BigDecimal("36.8219"))).order();
+        var order = checkoutService.checkout(SESSION_ID, new CheckoutRequest("Njeri Test", "n@example.com", "0720 000 111",
+                FulfilmentType.DELIVERY_COURIER, "Riverside Court, Kilimani", "BODA")).order();
 
-        // The quote is for the products' value, and the customer is charged products + delivery.
-        verify(quoteService).quote(new BigDecimal("-1.2921"), new BigDecimal("36.8219"), new BigDecimal("500.00"));
-        assertThat(order.getDeliveryFee()).isEqualByComparingTo("350.00");
-        assertThat(order.getGrandTotal()).isEqualByComparingTo("850.00");
-        assertThat(order.getDropoffLat()).isEqualByComparingTo("-1.2921");
-        assertThat(order.isTumabodaApiDelivery()).isTrue();
-    }
-
-    @Test
-    void aDropoffTumabodaCannotServeRefusesTheCheckoutBeforeAnyStockIsHeld() {
-        when(cartItemRepository.findByCartId(cart.getId()))
-                .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-        when(quoteService.enabled()).thenReturn(true);
-        when(quoteService.quote(any(), any(), any())).thenThrow(
-                new com.nbh.backend.tumaboda.TumaBodaException("OUT_OF_COVERAGE", "not covered", false));
-
-        assertThatThrownBy(() -> checkoutService.checkout(SESSION_ID,
-                tumabodaRequest(new BigDecimal("-1.2921"), new BigDecimal("36.8219"))))
-                .isInstanceOf(com.nbh.backend.common.exception.UnprocessableException.class)
-                .hasMessageContaining("TumaBoda can't deliver to that address");
-        verify(reservationService, never()).reserve(any(), any(), any(), any(), any(), any());
-        verify(orderRepository, never()).save(any());
-    }
-
-    @Test
-    void tumabodaWithoutADropoffPointStaysPhoneArrangedAndIsNeverQuoted() {
-        when(cartItemRepository.findByCartId(cart.getId()))
-                .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-        lenient().when(quoteService.enabled()).thenReturn(true);
-
-        var order = checkoutService.checkout(SESSION_ID, tumabodaRequest(null, null)).order();
-
-        verify(quoteService, never()).quote(any(), any(), any());
         assertThat(order.getDeliveryFee()).isEqualByComparingTo("0");
-        assertThat(order.getGrandTotal()).isEqualByComparingTo("500.00");
-        assertThat(order.isTumabodaApiDelivery()).isFalse();
-    }
-
-    @Test
-    void withTheIntegrationOffADropoffPointIsIgnoredAndTheOrderIsPhoneArranged() {
-        when(cartItemRepository.findByCartId(cart.getId()))
-                .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-        when(quoteService.enabled()).thenReturn(false);
-
-        var order = checkoutService.checkout(SESSION_ID,
-                tumabodaRequest(new BigDecimal("-1.2921"), new BigDecimal("36.8219"))).order();
-
-        verify(quoteService, never()).quote(any(), any(), any());
-        assertThat(order.getDropoffLat()).isNull();
         assertThat(order.getGrandTotal()).isEqualByComparingTo("500.00");
     }
 

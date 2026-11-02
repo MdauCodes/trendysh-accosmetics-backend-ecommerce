@@ -11,7 +11,6 @@ import com.nbh.backend.common.event.OrderReadyEvent;
 import com.nbh.backend.common.event.PaymentClaimSubmittedEvent;
 import com.nbh.backend.common.event.PaymentConfirmedEvent;
 import com.nbh.backend.common.event.PaymentFailedEvent;
-import com.nbh.backend.common.event.TumaBodaDeliveryUpdatedEvent;
 import com.nbh.backend.order.entity.FulfilmentType;
 import com.nbh.backend.payment.entity.PaymentRecord;
 import org.junit.jupiter.api.Test;
@@ -102,14 +101,6 @@ class LiveUpdateListenerTest {
 
         verify(streams).publishToStaff(argThat(e -> e.type() == AdminEvent.Type.BANK_CREDIT && e.orderNo() == null));
         verify(streams, never()).publishToOrder(org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void tumaBodaDeliveryUpdatedTellsStaffAndTheOrdersWatchers() {
-        listener.onTumaBodaDeliveryUpdated(new TumaBodaDeliveryUpdatedEvent(UUID.randomUUID(), "SO-1", "in_transit"));
-
-        verify(streams).publishToStaff(AdminEvent.of(AdminEvent.Type.DELIVERY_UPDATED, "SO-1"));
-        verify(streams).publishToOrder("SO-1");
     }
 
     // ---- shared-data changes: staff are told quickly, storefront visitors in slower, coalesced batches ----

@@ -20,10 +20,6 @@ public record OrderDto(
         String transporterName,
         String transporterPhone,
         BigDecimal agreedDeliveryPrice,
-        /** TumaBoda's tracking link/code and its latest status for an order booked through the API; null otherwise. */
-        String tumabodaTrackingUrl,
-        String tumabodaTrackingCode,
-        String tumabodaStatus,
         /** For a pickup order, which shop it waits at (the label the shopper chose at checkout); null for a delivery, whose address stays out of this view. */
         String pickupPlace,
         /**
@@ -41,7 +37,7 @@ public record OrderDto(
                 order.getItems().stream().map(OrderItemDto::from).toList(),
                 order.getCreatedAt(),
                 order.getTransporterName(), order.getTransporterPhone(), order.getAgreedDeliveryPrice(),
-                order.getTumabodaTrackingUrl(), order.getTumabodaTrackingCode(), order.getTumabodaStatus(),
+                
                 order.getFulfilmentType() == com.nbh.backend.order.entity.FulfilmentType.PICKUP
                         ? order.getDeliveryAddress() : null,
                 null);
@@ -49,7 +45,6 @@ public record OrderDto(
 
     public OrderDto withPayRef(String reference) {
         return new OrderDto(id, orderNo, status, fulfilmentType, subtotal, vatTotal, deliveryFee, grandTotal, items,
-                createdAt, transporterName, transporterPhone, agreedDeliveryPrice, tumabodaTrackingUrl,
-                tumabodaTrackingCode, tumabodaStatus, pickupPlace, reference);
+                createdAt, transporterName, transporterPhone, agreedDeliveryPrice, pickupPlace, reference);
     }
 }

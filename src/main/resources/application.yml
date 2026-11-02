@@ -32,8 +32,8 @@ spring:
     scheduling:
       pool:
         # Boot's default is ONE scheduler thread shared by every @Scheduled job (stock-hold and order
-        # expiry, guest-tracking cleanup, TumaBoda retry and reconciliation, ...). A TumaBoda poll that is
-        # waiting out a slow network call must not hold the expiry sweeps back behind it.
+        # expiry, guest-tracking cleanup, ...). A job that is waiting out a slow network call must not
+        # hold the expiry sweeps back behind it.
         size: 4
 
   servlet:
@@ -88,9 +88,6 @@ app:
   stock:
     reservation-sweep-interval-ms: ${RESERVATION_SWEEP_INTERVAL_MS:60000}
   payments:
-    # BANK: the customer pays the bank quoting a per-order reference (pay page at
-    # /pay/{orderNo}); MPESA: Daraja STK push. Only BANK confirms via staff today.
-    collection-mode: ${PAYMENT_COLLECTION_MODE:BANK}
     # How long the stock is held and the reference stays payable (bank transfers are slow).
     window-minutes: ${PAYMENT_WINDOW_MINUTES:45}
   bank:
@@ -110,34 +107,6 @@ app:
   storefront:
     # Render's deploy hook for the storefront (can also be saved in Settings, Integrations). Blank = no rebuilds.
     deploy-hook-url: ${STOREFRONT_DEPLOY_HOOK_URL:}
-  coop:
-    ins:
-      # Co-op Bank Instant Notification Service (deposit notifications). NOT tested against the real
-      # bank. Blank credentials = reject everything. Agree these with the bank when registering the endpoint
-      # https://<api-host>/api/v1/payments/coop/ins ; INS authenticates with this shared Basic credential only.
-      username: ${COOP_INS_USERNAME:}
-      password: ${COOP_INS_PASSWORD:}
-      # When set, notifications for any other Co-op account number are ignored.
-      account-number: ${COOP_INS_ACCOUNT_NUMBER:}
-      # false (default): record each credit for staff to allocate. true: confirm an order automatically when the
-      # credit carries a valid reference and the exact amount. Turn on only after verifying against the real bank.
-      auto-match: ${COOP_INS_AUTO_MATCH:false}
-  mpesa:
-    # UNSET PLACEHOLDERS — DarajaPaymentGateway refuses to call Safaricom until
-    # real sandbox credentials are set here. See that class's javadoc.
-    base-url: ${MPESA_BASE_URL:https://sandbox.safaricom.co.ke}
-    consumer-key: ${MPESA_CONSUMER_KEY:}
-    consumer-secret: ${MPESA_CONSUMER_SECRET:}
-    shortcode: ${MPESA_SHORTCODE:}
-    passkey: ${MPESA_PASSKEY:}
-    # MUST end in /<callback-secret>'s value below, e.g.
-    # https://api.example.com/api/v1/payments/mpesa/callback/<random-secret>
-    callback-url: ${MPESA_CALLBACK_URL:}
-    # §4 C1 fix — a high-entropy random value (e.g. `openssl rand -hex 32`),
-    # never committed, matched via PaymentController.isAuthenticCallback.
-    # Blank (the default) means the callback endpoint rejects every request —
-    # set this BEFORE the callback URL is ever registered with Safaricom.
-    callback-secret: ${MPESA_CALLBACK_SECRET:}
   live:
     # Storefront live updates (live.LiveStreams / LiveUpdateListener). All optional; these are the defaults.
     # Open connections allowed for anonymous visitors. Over this a visitor is told to retry in 1-3 minutes

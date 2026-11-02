@@ -95,9 +95,6 @@ public class OrderFulfilmentService {
     private static final Set<OrderStatus> CANCELLABLE_STATUSES =
             EnumSet.of(OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.PICKING, OrderStatus.READY);
 
-    /** How long after an order is marked ready the TumaBoda retry job steps in if the rider booking that should follow never ran. */
-    static final java.time.Duration TUMABODA_BOOKING_SAFETY_NET = java.time.Duration.ofMinutes(3);
-
     private final CustomerOrderRepository orderRepository;
     private final StockAvailabilityService availabilityService;
     private final StockPostingService postingService;
@@ -138,10 +135,6 @@ public class OrderFulfilmentService {
         if (!DISPATCHABLE_STATUSES.contains(order.getStatus())) {
             throw new UnprocessableException(
                     "Order " + order.getOrderNo() + " is " + order.getStatus() + " — cannot assign a transporter");
-        }
-        if (order.isTumabodaApiDelivery()) {
-            throw new UnprocessableException("Order " + order.getOrderNo() + " is delivered by a TumaBoda rider booked"
-                    + " through the API. Switch it to a phone-arranged delivery first if you want to assign someone else.");
         }
 
         // A matatu parcel desk or a sacco office may be a landline, so this is looser than a customer's mobile
@@ -190,7 +183,7 @@ public class OrderFulfilmentService {
     private CustomerOrder phoneArrangedOrder(java.util.UUID orderId) {
         CustomerOrder order = orderRepository.lockById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("No order: " + orderId));
-        if (order.getFulfilmentType() != FulfilmentType.DELIVERY_COURIER || order.isTumabodaApiDelivery()) {
+        if (order.getFulfilmentType() != FulfilmentType.DELIVERY_COURIER) {
             throw new UnprocessableException("Order " + order.getOrderNo()
                     + " is not delivered by a phone-arranged transporter, so there is no hand-off to record");
         }
@@ -217,16 +210,9 @@ public class OrderFulfilmentService {
             throw new UnprocessableException(
                     "Order " + order.getOrderNo() + " is " + order.getStatus() + " — cannot fulfil it");
         }
-        if (order.getFulfilmentType() == FulfilmentType.DELIVERY_COURIER) {
-            if (order.isTumabodaApiDelivery()) {
-                if (order.getTumabodaDeliveryId() == null) {
-                    throw new UnprocessableException("A TumaBoda rider hasn't been booked for " + order.getOrderNo()
-                            + " yet. Book one from the order, or switch it to a phone-arranged delivery.");
-                }
-            } else if (order.getTransporterName() == null) {
-                throw new UnprocessableException(
-                        "Assign a rider, matatu or courier for " + order.getOrderNo() + " before marking it dispatched");
-            }
+        if (order.getFulfilmentType() == FulfilmentType.DELIVERY_COURIER && order.getTransporterName() == null) {
+            throw new UnprocessableException(
+                    "Assign a rider, matatu or courier for " + order.getOrderNo() + " before marking it dispatched");
         }
 
         StockDocument document = new StockDocument();
@@ -371,12 +357,6 @@ public class OrderFulfilmentService {
         }
 
         order.setStatus(OrderStatus.READY);
-        if (order.isTumabodaApiDelivery() && order.getTumabodaDeliveryId() == null) {
-            // The rider is booked right after this commits, and a booking that goes through clears this
-            // again. It is only here so that a booking that never ran (the server restarting in between)
-            // is found by the retry job a few minutes on instead of the order waiting for staff to notice.
-            order.setTumabodaNextRetryAt(java.time.Instant.now().plus(TUMABODA_BOOKING_SAFETY_NET));
-        }
         order = orderRepository.save(order);
 
         eventPublisher.publishEvent(
@@ -428,10 +408,6 @@ public class OrderFulfilmentService {
         if (!CANCELLABLE_STATUSES.contains(order.getStatus())) {
             throw new UnprocessableException(
                     "Order " + order.getOrderNo() + " is " + order.getStatus() + " — cannot be cancelled");
-        }
-        if (order.hasLiveTumabodaDelivery()) {
-            throw new UnprocessableException("A TumaBoda rider is already booked for " + order.getOrderNo()
-                    + " and TumaBoda has no cancel option. Contact TumaBoda to stop the delivery, then cancel here.");
         }
 
         // In variant-id order, as checkout reserves and confirmSuccess confirms: releasing in the order the lines were entered

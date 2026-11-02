@@ -60,7 +60,7 @@ class PaymentServiceUnitTest {
         PaymentRecord payment = new PaymentRecord();
         payment.setId(UUID.randomUUID());
         payment.setOrder(order);
-        payment.setProvider("DARAJA");
+        payment.setProvider("BANK");
         payment.setMethod(PaymentRecord.PaymentMethod.MPESA);
         payment.setAmount(new BigDecimal("500.00"));
         payment.setStatus(status);
@@ -220,7 +220,7 @@ class PaymentServiceUnitTest {
 
     /**
      * Bringing a failed payment back must be deliberate: a stale Confirm click, an old customer claim being approved or a
-     * late callback all reach confirmSuccess without the revive flag, and none of them may undo a decision that a payment
+     * all reach confirmSuccess without the revive flag, and none of them may undo a decision that a payment
      * failed (found by the 2026-10-07 pre-push audit).
      */
     @Test
@@ -353,7 +353,7 @@ class PaymentServiceUnitTest {
         PaymentRecord payment = paymentWith(PaymentRecord.PaymentStatus.INITIATED, order);
         when(paymentRecordRepository.lockById(payment.getId())).thenReturn(Optional.of(payment));
 
-        PaymentRecord result = paymentService.markFailed(payment.getId(), "Daraja ResultCode 1", "{}");
+        PaymentRecord result = paymentService.markFailed(payment.getId(), "Customer did not pay", "{}");
 
         assertThat(result.getStatus()).isEqualTo(PaymentRecord.PaymentStatus.FAILED);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
@@ -368,7 +368,7 @@ class PaymentServiceUnitTest {
         PaymentRecord payment = paymentWith(PaymentRecord.PaymentStatus.SUCCESS, order);
         when(paymentRecordRepository.lockById(payment.getId())).thenReturn(Optional.of(payment));
 
-        assertThatThrownBy(() -> paymentService.markFailed(payment.getId(), "late failure callback", "{}"))
+        assertThatThrownBy(() -> paymentService.markFailed(payment.getId(), "late failure", "{}"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already succeeded — cannot mark failed");
 

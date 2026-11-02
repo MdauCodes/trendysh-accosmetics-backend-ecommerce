@@ -30,15 +30,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Found in the 2026-10-06 go-live QA: a staff request to confirm (or fail) a payment with a body the server
  * could not read was answered 200 {"ResultCode":"0","ResultDesc":"Accepted"} and did nothing, so the dashboard
- * would have told staff the payment was confirmed while the order stayed unpaid. That answer belongs to Safaricom's
- * callback alone (it retries anything else); a staff call with a bad body is a 400.
+ * would have told staff the payment was confirmed while the order stayed unpaid. A staff call with a bad body is a 400.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class PaymentBodyHandlingIntegrationTest {
-
-    private static final String CALLBACK_SECRET = "test-only-callback-secret-not-for-any-real-deployment";
 
     @Autowired private MockMvc mvc;
     @Autowired private JwtService jwtService;
@@ -127,25 +124,5 @@ class PaymentBodyHandlingIntegrationTest {
 
         assertThat(paymentStatus()).isEqualTo(PaymentRecord.PaymentStatus.SUCCESS);
         assertThat(orderRepository.findByOrderNo(orderNo).orElseThrow().getStatus()).isEqualTo(OrderStatus.PAID);
-    }
-
-    @Test
-    void safaricomsCallbackIsStillAcknowledgedWhateverTheBodyLooksLike() throws Exception {
-        // It retries any other answer, so a body we cannot read is logged and answered "Accepted".
-        for (String body : new String[] {"{ this is not json", "", "[]", "{\"Body\":{\"stkCallback\":{}}}"}) {
-            mvc.perform(post("/api/v1/payments/mpesa/callback/" + CALLBACK_SECRET)
-                            .contentType(MediaType.APPLICATION_JSON).content(body))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.ResultCode").value("0"))
-                    .andExpect(jsonPath("$.ResultDesc").value("Accepted"));
-        }
-        assertThat(paymentStatus()).isEqualTo(PaymentRecord.PaymentStatus.INITIATED);
-    }
-
-    @Test
-    void aCallbackWithoutTheRightSecretIsNotAnswered() throws Exception {
-        mvc.perform(post("/api/v1/payments/mpesa/callback/not-the-secret")
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isNotFound());
     }
 }

@@ -11,7 +11,6 @@ import com.nbh.backend.common.event.OrderReadyEvent;
 import com.nbh.backend.common.event.PaymentClaimSubmittedEvent;
 import com.nbh.backend.common.event.PaymentConfirmedEvent;
 import com.nbh.backend.common.event.PaymentFailedEvent;
-import com.nbh.backend.common.event.TumaBodaDeliveryUpdatedEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -100,12 +99,6 @@ public class LiveUpdateListener {
         // Staff-only: a bank credit is not any one order until it is matched (and a matched one already
         // gets its own PaymentConfirmedEvent push to that order).
         streams.publishToStaff(new AdminEvent(AdminEvent.Type.BANK_CREDIT, event.orderNo(), event.amount()));
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onTumaBodaDeliveryUpdated(TumaBodaDeliveryUpdatedEvent event) {
-        streams.publishToStaff(AdminEvent.of(AdminEvent.Type.DELIVERY_UPDATED, event.orderNo()));
-        streams.publishToOrder(event.orderNo());
     }
 
     /** Topics changed since the last staff flush: a bulk edit marks the same topic thousands of times but is pushed once. */

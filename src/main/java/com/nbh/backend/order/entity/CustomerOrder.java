@@ -70,8 +70,7 @@ public class CustomerOrder extends BaseEntity {
     /**
      * Who the rider should actually call at drop-off (V47) — distinct from {@link #guestPhone},
      * used for account contact/M-Pesa. Null means "same as the order phone" (checkout autofills it
-     * there, but leaves it editable); {@code TumaBodaBookingService} falls back to {@link #guestPhone}
-     * when this is blank.
+     * there, but leaves it editable).
      */
     @Column(name = "delivery_contact_phone", length = 20)
     private String deliveryContactPhone;
@@ -187,95 +186,6 @@ public class CustomerOrder extends BaseEntity {
     /** When staff told the shopper which transporter has it and where to collect; null until they have (V59). */
     @Column(name = "customer_informed_at")
     private Instant customerInformedAt;
-
-    // ---- TumaBoda API delivery (V38). All null for orders arranged by phone. ----
-
-    /** Where a TumaBoda rider drops off, from the address the customer picked at checkout. Present means "book through the API". */
-    @Column(name = "dropoff_lat", precision = 10, scale = 7)
-    private BigDecimal dropoffLat;
-
-    @Column(name = "dropoff_lng", precision = 10, scale = 7)
-    private BigDecimal dropoffLng;
-
-    @Column(name = "tumaboda_delivery_id", length = 100)
-    private String tumabodaDeliveryId;
-
-    @Column(name = "tumaboda_delivery_number", length = 100)
-    private String tumabodaDeliveryNumber;
-
-    @Column(name = "tumaboda_tracking_code", length = 100)
-    private String tumabodaTrackingCode;
-
-    @Column(name = "tumaboda_tracking_url", length = 500)
-    private String tumabodaTrackingUrl;
-
-    /** TumaBoda's own status string, stored as received (in_transit, delivered, failed, ...). */
-    @Column(name = "tumaboda_status", length = 40)
-    private String tumabodaStatus;
-
-    /** What TumaBoda charged the shop for this delivery; the customer paid {@code deliveryFee}, the quote at checkout. */
-    @Column(name = "tumaboda_cost", precision = 14, scale = 2)
-    private BigDecimal tumabodaCost;
-
-    @Column(name = "tumaboda_rider_id", length = 100)
-    private String tumabodaRiderId;
-
-    /** The code staff give the rider at pickup (V49) — display-only until TumaBoda's real API confirms the field exists. */
-    @Column(name = "tumaboda_pickup_otp", length = 20)
-    private String tumabodaPickupOtp;
-
-    @Column(name = "tumaboda_last_webhook_at")
-    private Instant tumabodaLastWebhookAt;
-
-    @Column(name = "tumaboda_booking_attempts", nullable = false)
-    private int tumabodaBookingAttempts = 0;
-
-    @Column(name = "tumaboda_next_retry_at")
-    private Instant tumabodaNextRetryAt;
-
-    @Column(name = "tumaboda_booking_failure", length = 500)
-    private String tumabodaBookingFailure;
-
-    /**
-     * How many times staff booked a fresh rider after TumaBoda reported the delivery failed, returned or
-     * cancelled. Each restart needs a new TumaBoda reference ("SO-...-R1"): reusing the order number would
-     * just hand back the dead delivery.
-     */
-    @Column(name = "tumaboda_restart_count", nullable = false)
-    private int tumabodaRestartCount = 0;
-
-    /** Staff moved this order back to a phone-arranged transporter after a booking problem. */
-    @Column(name = "tumaboda_rerouted", nullable = false)
-    private boolean tumabodaRerouted = false;
-
-    /**
-     * Which {@code TumaBodaSettlement} swept this order's {@link #tumabodaCost} into a remittance —
-     * null means still outstanding (V48). Plain UUID, not a mapped relation, same convention as the
-     * other staff/document id columns on this entity (e.g. {@code tumabodaDeliveryId}).
-     */
-    @Column(name = "tumaboda_settlement_id")
-    private UUID tumabodaSettlementId;
-
-    /** True when this order is to be (or has been) delivered by a TumaBoda rider booked through the API. */
-    public boolean isTumabodaApiDelivery() {
-        return dropoffLat != null && dropoffLng != null && !tumabodaRerouted;
-    }
-
-    /** TumaBoda statuses meaning the delivery is over and will not be completed. */
-    public static boolean isDeadTumabodaStatus(String status) {
-        if (status == null) {
-            return false;
-        }
-        return switch (status.toLowerCase(java.util.Locale.ROOT)) {
-            case "failed", "returned", "cancelled", "canceled" -> true;
-            default -> false;
-        };
-    }
-
-    /** A rider is booked and TumaBoda has not reported the delivery failed, returned or cancelled. */
-    public boolean hasLiveTumabodaDelivery() {
-        return tumabodaDeliveryId != null && !isDeadTumabodaStatus(tumabodaStatus);
-    }
 
     /** In the order they were entered (V70): a package's own products follow the package's line, in the package's order. */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

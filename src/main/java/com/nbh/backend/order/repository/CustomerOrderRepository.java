@@ -92,33 +92,6 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
 
     boolean existsByGuestEmailIgnoreCase(String guestEmail);
 
-    /** TumaBoda bookings whose retry time has come — see {@code TumaBodaBookingRetryJob}. */
-    @Query("select o.id from CustomerOrder o where o.tumabodaNextRetryAt is not null and o.tumabodaNextRetryAt <= :now "
-            + "and o.tumabodaDeliveryId is null and o.tumabodaRerouted = false")
-    List<UUID> findIdsDueForTumabodaRetry(@Param("now") Instant now);
-
-    /**
-     * The order a TumaBoda delivery id belongs to, if any (webhooks and status polls arrive keyed by it).
-     * Id only, deliberately: the caller then takes the order's lock, and loading the entity first would
-     * leave a stale copy in the persistence context for that lock to hand back.
-     */
-    @Query("select o.id from CustomerOrder o where o.tumabodaDeliveryId = :deliveryId")
-    Optional<UUID> findIdByTumabodaDeliveryId(@Param("deliveryId") String deliveryId);
-
-    /** A booked delivery not yet seen finishing, and quiet since {@code quietSince}: the reconciliation poll's worklist. */
-    interface DeliveryToPoll {
-        UUID getId();
-        String getTumabodaDeliveryId();
-    }
-
-    @Query("""
-            select o.id as id, o.tumabodaDeliveryId as tumabodaDeliveryId from CustomerOrder o
-            where o.tumabodaDeliveryId is not null and o.tumabodaRerouted = false
-              and (o.tumabodaStatus is null or lower(o.tumabodaStatus) not in ('delivered', 'failed', 'returned', 'cancelled', 'canceled'))
-              and (o.tumabodaLastWebhookAt is null or o.tumabodaLastWebhookAt < :quietSince)
-            """)
-    List<DeliveryToPoll> findTumabodaDeliveriesToPoll(@Param("quietSince") Instant quietSince);
-
     /** Ids only — feeds {@code OrderExpiryService}, which then locks and re-checks each order itself. */
     @Query("select o.id from CustomerOrder o where o.status = :status")
     List<UUID> findIdsByStatus(@Param("status") OrderStatus status);
@@ -174,22 +147,11 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
      * live signal {@code MockDataSeederService.status()} uses for "enabled" (any mock product
      * currently published), rather than a separate flag that could drift out of sync with it.
      */
-    /**
-     * {@code needsAttention} mirrors {@code AdminOrderDetailDto.Tumaboda.from}'s per-order logic
-     * exactly (a booking's retries are exhausted, or TumaBoda reports the delivery dead, and staff
-     * haven't rerouted it to a phone-arranged transporter) — Phase 3 (2026-10-02): extends that
-     * existing signal to the list view instead of inventing new buckets. {@code needsAttentionOnly}
-     * filters to just those when true; combines with {@code status}/{@code q} like any other filter.
-     */
     @Query("""
             SELECT NEW com.nbh.backend.order.dto.OrderSummaryDto(
                 o.id, o.orderNo, o.status, o.customerName, o.guestEmail, o.guestPhone,
                 (SELECT COUNT(li) FROM CustomerOrderItem li WHERE li.order = o AND li.parentItem IS NULL), o.grandTotal, o.createdAt,
-                CASE WHEN o.tumabodaRerouted = true THEN false
-                     WHEN LOWER(COALESCE(o.tumabodaStatus, '')) IN ('failed', 'returned', 'cancelled', 'canceled') THEN true
-                     WHEN o.tumabodaDeliveryId IS NULL AND o.tumabodaBookingFailure IS NOT NULL AND o.tumabodaNextRetryAt IS NULL THEN true
-                     ELSE false END,
-                o.tumabodaBookingFailure, o.fulfilmentType, o.deliveryAddress)
+                o.fulfilmentType, o.deliveryAddress)
             FROM CustomerOrder o
             WHERE (:status IS NULL OR o.status = :status)
               AND (:q IS NULL
@@ -198,10 +160,6 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
                    OR LOWER(o.guestEmail) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
                    OR o.guestPhone LIKE CONCAT('%', CAST(:phoneQ AS string), '%'))
               AND ((o.isMockData = true AND EXISTS (SELECT 1 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true)) OR (o.isMockData = false AND NOT EXISTS (SELECT 1 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true)))
-              AND (:needsAttentionOnly = false
-                   OR (o.tumabodaRerouted = false
-                       AND (LOWER(COALESCE(o.tumabodaStatus, '')) IN ('failed', 'returned', 'cancelled', 'canceled')
-                            OR (o.tumabodaDeliveryId IS NULL AND o.tumabodaBookingFailure IS NOT NULL AND o.tumabodaNextRetryAt IS NULL))))
               AND (:pickupPlace IS NULL
                    OR (o.fulfilmentType = com.nbh.backend.order.entity.FulfilmentType.PICKUP
                        AND LOWER(o.deliveryAddress) LIKE LOWER(CONCAT(CAST(:pickupPlace AS string), '%'))))
@@ -222,24 +180,20 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
             ORDER BY o.createdAt DESC
             """)
     Page<OrderSummaryDto> search(@Param("status") OrderStatus status, @Param("q") String q,
-                                  @Param("phoneQ") String phoneQ, @Param("needsAttentionOnly") boolean needsAttentionOnly,
+                                  @Param("phoneQ") String phoneQ,
                                   @Param("pickupPlace") String pickupPlace, @Param("paymentCode") String paymentCode,
                                   Pageable pageable);
 
     /**
      * The fulfilment queue: only orders still waiting on staff ({@code statuses} — dispatched, delivered,
      * cancelled and expired ones are handled and drop out), oldest first so the longest-waiting is on
-     * top. Same demo-data gating, search and needs-attention filters as {@link #search}.
+     * top. Same demo-data gating and search as {@link #search}.
      */
     @Query("""
             SELECT NEW com.nbh.backend.order.dto.OrderSummaryDto(
                 o.id, o.orderNo, o.status, o.customerName, o.guestEmail, o.guestPhone,
                 (SELECT COUNT(li) FROM CustomerOrderItem li WHERE li.order = o AND li.parentItem IS NULL), o.grandTotal, o.createdAt,
-                CASE WHEN o.tumabodaRerouted = true THEN false
-                     WHEN LOWER(COALESCE(o.tumabodaStatus, '')) IN ('failed', 'returned', 'cancelled', 'canceled') THEN true
-                     WHEN o.tumabodaDeliveryId IS NULL AND o.tumabodaBookingFailure IS NOT NULL AND o.tumabodaNextRetryAt IS NULL THEN true
-                     ELSE false END,
-                o.tumabodaBookingFailure, o.fulfilmentType, o.deliveryAddress)
+                o.fulfilmentType, o.deliveryAddress)
             FROM CustomerOrder o
             WHERE o.status IN :statuses
               AND (:q IS NULL
@@ -248,10 +202,6 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
                    OR LOWER(o.guestEmail) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
                    OR o.guestPhone LIKE CONCAT('%', CAST(:phoneQ AS string), '%'))
               AND ((o.isMockData = true AND EXISTS (SELECT 1 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true)) OR (o.isMockData = false AND NOT EXISTS (SELECT 1 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true)))
-              AND (:needsAttentionOnly = false
-                   OR (o.tumabodaRerouted = false
-                       AND (LOWER(COALESCE(o.tumabodaStatus, '')) IN ('failed', 'returned', 'cancelled', 'canceled')
-                            OR (o.tumabodaDeliveryId IS NULL AND o.tumabodaBookingFailure IS NOT NULL AND o.tumabodaNextRetryAt IS NULL))))
               AND (:pickupPlace IS NULL
                    OR (o.fulfilmentType = com.nbh.backend.order.entity.FulfilmentType.PICKUP
                        AND LOWER(o.deliveryAddress) LIKE LOWER(CONCAT(CAST(:pickupPlace AS string), '%'))))
@@ -259,18 +209,7 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
             """)
     Page<OrderSummaryDto> searchQueue(@Param("statuses") java.util.Collection<OrderStatus> statuses,
                                       @Param("q") String q, @Param("phoneQ") String phoneQ,
-                                      @Param("needsAttentionOnly") boolean needsAttentionOnly,
                                       @Param("pickupPlace") String pickupPlace, Pageable pageable);
-
-    /** The "Needs attention (N)" chip's count — same predicate as {@code search}'s needsAttentionOnly branch, unfiltered by status/q. */
-    @Query("""
-            SELECT COUNT(o) FROM CustomerOrder o
-            WHERE o.tumabodaRerouted = false
-              AND (LOWER(COALESCE(o.tumabodaStatus, '')) IN ('failed', 'returned', 'cancelled', 'canceled')
-                   OR (o.tumabodaDeliveryId IS NULL AND o.tumabodaBookingFailure IS NOT NULL AND o.tumabodaNextRetryAt IS NULL))
-              AND ((o.isMockData = true AND EXISTS (SELECT 1 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true)) OR (o.isMockData = false AND NOT EXISTS (SELECT 1 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true)))
-            """)
-    long countNeedingAttention();
 
     /** For MockDataSeederService.status()'s order count — how many of the synthetic
      *  review/sale-event FK orders currently exist, regardless of enabled/disabled state. */
@@ -339,31 +278,6 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
         OrderStatus getStatus();
         long getCount();
     }
-
-    /**
-     * TumaBoda settlement ledger (V48): every costed delivery not yet swept into a settlement —
-     * {@code tumabodaCost} is only ever set once a booking actually happened (see
-     * {@code TumaBodaBookingService}), so this needs no further status filtering. Oldest first,
-     * matching how a bank reconciliation is normally worked.
-     */
-    @Query("""
-            SELECT NEW com.nbh.backend.tumaboda.TumaBodaSettlementDtos$OutstandingLine(
-                o.id, o.orderNo, o.customerName, o.tumabodaCost, o.createdAt)
-            FROM CustomerOrder o
-            WHERE o.tumabodaCost IS NOT NULL AND o.tumabodaSettlementId IS NULL
-            ORDER BY o.createdAt ASC
-            """)
-    List<com.nbh.backend.tumaboda.TumaBodaSettlementDtos.OutstandingLine> findOutstandingTumabodaDeliveries();
-
-    @Query("SELECT COALESCE(SUM(o.tumabodaCost), 0) FROM CustomerOrder o WHERE o.tumabodaCost IS NOT NULL AND o.tumabodaSettlementId IS NULL")
-    BigDecimal totalOutstandingTumabodaCost();
-
-    /** Sweeps every currently-outstanding costed delivery into one settlement — see {@code TumaBodaSettlementService.record}. */
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("UPDATE CustomerOrder o SET o.tumabodaSettlementId = :settlementId WHERE o.tumabodaCost IS NOT NULL AND o.tumabodaSettlementId IS NULL")
-    int sweepOutstandingTumabodaDeliveries(@Param("settlementId") UUID settlementId);
-
-    long countByTumabodaSettlementId(UUID settlementId);
 
     /** One row per Nairobi calendar day that had orders — the overview's trend lines. Same demo-or-real rule as every other view. */
     interface DailyOrders {

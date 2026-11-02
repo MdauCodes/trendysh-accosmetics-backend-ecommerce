@@ -49,7 +49,6 @@ public record AdminOrderDetailDto(
         String handoffNote,
         /** When the shopper was told which transporter has it and where to collect; null until then. */
         Instant customerInformedAt,
-        Tumaboda tumaboda,
         List<Line> items,
         List<Payment> payments,
         /** The shopper account this order belongs to; null for a guest order. */
@@ -80,30 +79,6 @@ public record AdminOrderDetailDto(
         static Claim from(PaymentClaim c) {
             return new Claim(c.getId(), c.getTransactionCode(), c.getAmountClaimed(), c.getStatus().name(),
                     c.getCreatedAt(), c.getPayerName(), c.getResolvedBy(), c.getResolutionNote());
-        }
-    }
-
-    /**
-     * The TumaBoda API side of the delivery, for the staff panel. Null when this order is not booked
-     * through the API (phone-arranged, pickup, or rerouted back to manual — {@code rerouted} says which).
-     * {@code needsAttention} is true when a booking is stuck or TumaBoda reports the delivery failed.
-     */
-    public record Tumaboda(boolean rerouted, boolean booked, String deliveryNumber, String status, String trackingUrl,
-                           String trackingCode, String riderId, BigDecimal cost, BigDecimal customerPaid,
-                           int bookingAttempts, Instant nextRetryAt, String bookingFailure, boolean needsAttention,
-                           String pickupOtp) {
-        static Tumaboda from(CustomerOrder o) {
-            if (!o.isTumabodaApiDelivery() && !o.isTumabodaRerouted()) {
-                return null;
-            }
-            boolean booked = o.getTumabodaDeliveryId() != null;
-            boolean needsAttention = !o.isTumabodaRerouted()
-                    && (CustomerOrder.isDeadTumabodaStatus(o.getTumabodaStatus())
-                        || (!booked && o.getTumabodaBookingFailure() != null && o.getTumabodaNextRetryAt() == null));
-            return new Tumaboda(o.isTumabodaRerouted(), booked, o.getTumabodaDeliveryNumber(), o.getTumabodaStatus(),
-                    o.getTumabodaTrackingUrl(), o.getTumabodaTrackingCode(), o.getTumabodaRiderId(),
-                    o.getTumabodaCost(), o.getDeliveryFee(), o.getTumabodaBookingAttempts(), o.getTumabodaNextRetryAt(),
-                    o.getTumabodaBookingFailure(), needsAttention, o.getTumabodaPickupOtp());
         }
     }
 
@@ -167,7 +142,6 @@ public record AdminOrderDetailDto(
                 o.getCreatedAt(), o.getPlacedAt(),
                 o.getTransporterName(), o.getTransporterPhone(), o.getAgreedDeliveryPrice(),
                 o.getHandoffStage(), o.getHandoffReference(), o.getHandoffNote(), o.getCustomerInformedAt(),
-                Tumaboda.from(o),
                 lines,
                 payments.stream().map(Payment::from).toList(),
                 Account.from(o.getCustomerAccount()),
@@ -182,7 +156,7 @@ public record AdminOrderDetailDto(
         return new AdminOrderDetailDto(id, orderNo, status, fulfilmentType, deliveryMethod, customerName, guestEmail,
                 guestPhone, deliveryAddress, deliveryContactPhone, deliveryDetails, subtotal, vatTotal, deliveryFee,
                 grandTotal, createdAt, placedAt, transporterName, transporterPhone, agreedDeliveryPrice, handoffStage,
-                handoffReference, handoffNote, customerInformedAt, tumaboda, items, payments, account, claims, placedBy,
+                handoffReference, handoffNote, customerInformedAt, items, payments, account, claims, placedBy,
                 changes, deliveryFareMin, deliveryFareMax);
     }
 }

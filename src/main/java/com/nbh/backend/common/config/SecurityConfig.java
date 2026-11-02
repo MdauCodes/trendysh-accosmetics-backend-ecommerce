@@ -76,20 +76,13 @@ public class SecurityConfig {
                     "/api/v1/checkout",
                     "/api/v1/checkout/**",
                     "/api/v1/orders/track/**",
-                    "/api/v1/payments/mpesa/callback/**",
                     // Customer's bank pay page: authorised by order number + payment reference.
                     "/api/v1/payments/pay/**",
                     // The paybill details the checkout's payment step previews before an order exists.
                     "/api/v1/payments/paybill-info",
-                    // TumaBoda: the webhook authenticates itself by HMAC signature; the quote and address
-                    // lookups back the checkout's delivery step and are rate-limited per IP.
-                    "/api/v1/tumaboda/webhook",
-                    "/api/v1/public/tumaboda/**",
                     // Storefront live hints and the delivery places/price comparison + suggestion form.
                     "/api/v1/public/events",
                     "/api/v1/public/delivery/**",
-                    // Co-op Bank deposit notifications: authenticated inside the controller (shared Basic credential).
-                    "/api/v1/payments/coop/ins",
                     // Public storefront browse/search/reviews — read-only, only
                     // ever returns published products (CatalogService's javadoc).
                     // Review submission (POST /catalog/products/{id}/reviews) is

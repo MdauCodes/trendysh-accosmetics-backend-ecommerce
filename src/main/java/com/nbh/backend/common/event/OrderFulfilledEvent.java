@@ -9,7 +9,7 @@ import java.util.UUID;
  * document is posted and the order moves to DISPATCHED. The designated seam
  * for notifying staff to arrange a rider/vehicle and call the customer
  * (deliberately not built yet — see HANDOFF.md; there is no automated
- * dispatch API to integrate with — TumaBoda is no longer used, and any
+ * dispatch API to integrate with, and any
  * courier is arranged manually by phone/WhatsApp per the founder's
  * confirmed delivery model) — that notification is a new listener on this
  * event, not a change to {@code OrderFulfilmentService} itself.

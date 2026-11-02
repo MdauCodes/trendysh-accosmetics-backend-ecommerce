@@ -46,9 +46,8 @@ public class CheckoutController {
         // (the JWT filter still authenticates a Bearer token on permitAll paths).
         CheckoutService.CheckoutResult result = checkoutService.checkout(sessionId, request, customer);
 
-        // A TumaBoda delivery fee is quoted by TumaBoda while the order is being placed, so it can differ
-        // from the preview the shopper saw. This whole method is one transaction, so refusing here undoes
-        // the order and its stock holds; the shopper sees the new fee and decides again.
+        // The shop charges no delivery fee, so a client showing one is out of date. This whole method is one
+        // transaction, so refusing here undoes the order and its stock holds; the shopper sees the real total.
         if (request.expectedDeliveryFee() != null
                 && request.expectedDeliveryFee().compareTo(result.order().getDeliveryFee()) != 0) {
             throw new PriceChangedException("The delivery price changed while you were checking out."

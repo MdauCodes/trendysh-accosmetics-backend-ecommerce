@@ -203,9 +203,6 @@ public interface FinanceRepository extends Repository<CustomerOrder, UUID> {
 
         String getConfirmBy();
 
-        /** True when the confirmation is Safaricom's own M-PESA callback. */
-        boolean getMpesaCallback();
-
         /**
          * True when the payment had been marked failed and was confirmed after all (PaymentService keeps the earlier note
          * and the confirmation's own under "now"; the columns above read the "now" one).
@@ -298,7 +295,6 @@ public interface FinanceRepository extends Repository<CustomerOrder, UUID> {
                    o.delivery_fee AS delivery, o.placed_by AS "placedBy",
                    (COALESCE(NULLIF(p.raw_response -> 'now', 'null'::jsonb), p.raw_response)) ->> 'type' AS "confirmType", (COALESCE(NULLIF(p.raw_response -> 'now', 'null'::jsonb), p.raw_response)) ->> 'by' AS "confirmBy",
                    COALESCE(p.raw_response ->> 'type' = 'revived_after_failure', false) AS "revived",
-                   ((COALESCE(NULLIF(p.raw_response -> 'now', 'null'::jsonb), p.raw_response)) -> 'Body' IS NOT NULL) AS "mpesaCallback",
                    cl.transaction_code AS "claimCode", cl.resolved_by AS "claimResolvedBy",
                    bc.bank_txn_id AS "bankTxnId", bc.resolved_by AS "bankResolvedBy",
                    (SELECT COUNT(*) FROM order_price_change c WHERE c.order_id = o.id) AS "priceChanges",

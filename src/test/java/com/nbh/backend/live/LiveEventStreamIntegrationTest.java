@@ -130,7 +130,7 @@ class LiveEventStreamIntegrationTest {
         UUID paymentRecordId = UUID.fromString(placed.get("paymentRecordId").asText());
 
         // Unique per run: this suite's database is not recreated between test executions, and
-        // provider_reference is uniquely indexed (it is how a real Daraja callback is de-duplicated).
+        // provider_reference is uniquely indexed (one code can pay for one order).
         paymentService.confirmSuccess(paymentRecordId, "LIVE-TEST-REF-" + UUID.randomUUID(), "{}");
 
         verify(liveStreams).publishToStaff(argThat(e ->

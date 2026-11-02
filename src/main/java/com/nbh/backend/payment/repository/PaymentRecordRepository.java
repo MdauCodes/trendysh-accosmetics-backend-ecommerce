@@ -15,15 +15,6 @@ public interface PaymentRecordRepository extends JpaRepository<PaymentRecord, UU
 
     Optional<PaymentRecord> findByIdempotencyKey(String idempotencyKey);
 
-    /**
-     * §4 C4 fix: the M-Pesa callback used to load every payment record ever
-     * created (findAll().stream().filter(...)) to correlate a CheckoutRequestID
-     * — unbounded memory growth on the hottest, most latency-sensitive path in
-     * the system. This is the natural correlation key; backed by a unique index
-     * (see V11 migration).
-     */
-    Optional<PaymentRecord> findByProviderReference(String providerReference);
-
     /** The same lookup without regard to case, for the "this code is already used" check on a hand-typed code. */
     Optional<PaymentRecord> findFirstByProviderReferenceIgnoreCase(String providerReference);
 
@@ -57,8 +48,8 @@ public interface PaymentRecordRepository extends JpaRepository<PaymentRecord, UU
 
     /**
      * §4 C2 fix: confirmSuccess/markFailed used an unlocked findById, so a
-     * Daraja callback retry racing a staff manual-confirm (or a manual-fail
-     * racing an arriving success callback) could both read the same status and
+     * staff manual-confirm racing a claim approval or a manual-fail could both
+     * read the same status and
      * both write — e.g. markFailed releasing the stock of an order confirmSuccess
      * had already marked PAID. Same lock-then-recheck pattern already proven for
      * StockReservation (audit finding F4) and StockBalance.

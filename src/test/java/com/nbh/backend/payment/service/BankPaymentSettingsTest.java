@@ -20,7 +20,7 @@ class BankPaymentSettingsTest {
     private BankPaymentSettings settingsWithEnvTemplate(String envTemplate) {
         PaymentSettingsRepository repository = mock(PaymentSettingsRepository.class);
         when(repository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(row));
-        return new BankPaymentSettings(repository, BankPaymentSettings.CollectionMode.BANK, 45, envTemplate);
+        return new BankPaymentSettings(repository, 45, envTemplate);
     }
 
     @Test

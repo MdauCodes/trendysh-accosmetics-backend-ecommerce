@@ -23,15 +23,13 @@ public record AdminEvent(Type type, String orderNo, BigDecimal amount, String to
         ORDER_PLACED,
         /** An order moved on: picking, ready, dispatched, delivered or cancelled. */
         ORDER_UPDATED,
-        /** A payment was confirmed, by staff, a bank credit or a callback. */
+        /** A payment was confirmed, by staff or a bank credit. */
         PAYMENT_CONFIRMED,
         PAYMENT_FAILED,
         /** A customer says they've paid; staff have to check it against the statement. */
         PAYMENT_CLAIMED,
         /** Money arrived at the bank account (matched to an order or not). */
         BANK_CREDIT,
-        /** TumaBoda booked a rider or reported progress on a delivery. */
-        DELIVERY_UPDATED,
         /** A shared collection changed; {@code topic} says which (see DataChangedEvent.Topic). */
         DATA_CHANGED
     }

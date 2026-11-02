@@ -188,7 +188,7 @@ public class OrderEmailService {
             lines.add(new Line(name, ksh(item.getLineTotal())));
         }
         if (order.getDeliveryFee() != null && order.getDeliveryFee().signum() > 0) {
-            lines.add(new Line("TumaBoda delivery", ksh(order.getDeliveryFee())));
+            lines.add(new Line("Delivery", ksh(order.getDeliveryFee())));
         }
         return lines;
     }

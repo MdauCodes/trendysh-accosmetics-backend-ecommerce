@@ -133,8 +133,7 @@ public class StaffOrderService {
         CheckoutRequest checkout = new CheckoutRequest(
                 request.customerName().trim(), blankToNull(request.email()), request.phone(), request.fulfilmentType(),
                 blankToNull(request.deliveryAddress()), request.fulfilmentType() == FulfilmentType.DELIVERY_COURIER
-                        ? request.deliveryMethod() : null,
-                null, null, request.expectedSubtotal(), null, blankToNull(request.deliveryContactPhone()),
+                        ? request.deliveryMethod() : null, request.expectedSubtotal(), null, blankToNull(request.deliveryContactPhone()),
                 request.deliveryDetails());
         CheckoutService.Placement placement = new CheckoutService.Placement(
                 cut(staff.getFullName(), 200), cut(staff.getEmail(), 120));

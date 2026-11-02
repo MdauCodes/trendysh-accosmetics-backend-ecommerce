@@ -32,8 +32,6 @@ import com.nbh.backend.payment.entity.PaymentRecord;
 import com.nbh.backend.payment.repository.BankCreditRepository;
 import com.nbh.backend.payment.repository.PaymentClaimRepository;
 import com.nbh.backend.payment.repository.PaymentRecordRepository;
-import com.nbh.backend.tumaboda.TumaBodaSettlement;
-import com.nbh.backend.tumaboda.TumaBodaSettlementRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -79,13 +77,12 @@ public class FinanceService {
     private final PaymentClaimRepository claims;
     private final BankCreditRepository bankCredits;
     private final OrderPriceChangeRepository priceChanges;
-    private final TumaBodaSettlementRepository settlements;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public FinanceService(FinanceRepository finance, CustomerOrderRepository orders, PaymentRecordRepository payments,
                           PaymentClaimRepository claims, BankCreditRepository bankCredits,
-                          OrderPriceChangeRepository priceChanges, TumaBodaSettlementRepository settlements,
+                          OrderPriceChangeRepository priceChanges,
                           ObjectMapper objectMapper, Clock clock) {
         this.finance = finance;
         this.orders = orders;
@@ -93,7 +90,6 @@ public class FinanceService {
         this.claims = claims;
         this.bankCredits = bankCredits;
         this.priceChanges = priceChanges;
-        this.settlements = settlements;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -236,9 +232,6 @@ public class FinanceService {
         if ("bank_credit".equals(type)) {
             String by = r.getBankResolvedBy();
             return new String[]{"Matched to a bank credit", "system".equals(by) ? "automatically, on the reference" : by};
-        }
-        if (r.getMpesaCallback()) {
-            return new String[]{"M-PESA confirmation", "Safaricom, automatically"};
         }
         return new String[]{"Confirmed", null};
     }
@@ -395,19 +388,6 @@ public class FinanceService {
                     received.signum() > 0 ? "Money of " + ksh(received) + " had been received: check whether it was refunded." : null));
         }
 
-        if (order.getTumabodaCost() != null) {
-            TumaBodaSettlement s = order.getTumabodaSettlementId() == null ? null
-                    : settlements.findById(order.getTumabodaSettlementId()).orElse(null);
-            if (s != null) {
-                steps.add(new Step(s.getSettledAt().atStartOfDay(NAIROBI).toInstant(), "DELIVERY_PAYOUT",
-                        "Delivery paid out to TumaBoda: " + ksh(order.getTumabodaCost()),
-                        "Settlement" + (s.getReference() == null ? "" : " " + s.getReference())));
-            } else {
-                steps.add(new Step(null, "DELIVERY_PAYOUT",
-                        "Delivery of " + ksh(order.getTumabodaCost()) + " owed to TumaBoda, not paid out yet", null));
-            }
-        }
-
         // Oldest first; a step with no date (money still owed) goes last.
         steps.sort(Comparator.comparing(Step::at, Comparator.nullsLast(Comparator.naturalOrder())));
         boolean closed = order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.EXPIRED;
@@ -461,9 +441,6 @@ public class FinanceService {
         }
         if ("bank_credit".equals(type)) {
             return "Confirmed by matching a bank credit";
-        }
-        if (note != null && note.has("Body")) {
-            return "Confirmed by Safaricom's M-PESA callback";
         }
         return null;
     }

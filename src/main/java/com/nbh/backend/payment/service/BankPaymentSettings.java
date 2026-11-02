@@ -14,8 +14,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Where the customer sends money, and how long they have to do it. {@code mode}/{@code paymentWindow}
- * stay operational config (env-var only — not something a shop owner should casually flip from a
+ * Where the customer sends money, and how long they have to do it. {@code paymentWindow}
+ * stays operational config (env-var only — not something a shop owner should casually flip from a
  * settings screen); the bank/paybill/WhatsApp details, the paybill's merchant name and the account
  * number template are read fresh from {@code payment_settings} on every call (see
  * {@code PaymentSettingsSeeder} for how that table gets its first row) so an admin edit takes effect
@@ -31,8 +31,6 @@ import java.util.regex.Pattern;
 @Service
 public class BankPaymentSettings {
 
-    public enum CollectionMode { BANK, MPESA }
-
     /** The placeholders an account-number template may contain. */
     public static final Set<String> ACCOUNT_PLACEHOLDERS = Set.of("<name>", "<phone>", "<order>", "<ref>");
 
@@ -41,24 +39,17 @@ public class BankPaymentSettings {
     private static final Pattern PLACEHOLDER = Pattern.compile("<[^<>]*>");
 
     private final PaymentSettingsRepository settingsRepository;
-    private final CollectionMode mode;
     private final Duration paymentWindow;
     private final String envAccountTemplate;
 
     public BankPaymentSettings(
             PaymentSettingsRepository settingsRepository,
-            @Value("${app.payments.collection-mode:BANK}") CollectionMode mode,
             @Value("${app.payments.window-minutes:45}") long windowMinutes,
             @Value("${app.bank.paybill-account-template:<name>}") String envAccountTemplate) {
         this.settingsRepository = settingsRepository;
-        this.mode = mode;
         this.paymentWindow = Duration.ofMinutes(windowMinutes);
         this.envAccountTemplate = envAccountTemplate;
     }
-
-    public CollectionMode mode() { return mode; }
-
-    public boolean bankMode() { return mode == CollectionMode.BANK; }
 
     public Duration paymentWindow() { return paymentWindow; }
 

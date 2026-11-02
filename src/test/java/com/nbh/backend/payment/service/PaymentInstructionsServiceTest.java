@@ -45,7 +45,7 @@ class PaymentInstructionsServiceTest {
         PaymentSettingsRepository settingsRepository = mock(PaymentSettingsRepository.class);
         when(settingsRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(row));
         var settings = new BankPaymentSettings(
-                settingsRepository, BankPaymentSettings.CollectionMode.BANK, 45, "01100123#<ref>");
+                settingsRepository, 45, "01100123#<ref>");
 
         service = new PaymentInstructionsService(repository, mock(com.nbh.backend.payment.repository.PaymentClaimRepository.class),
                 generator, settings, clock);

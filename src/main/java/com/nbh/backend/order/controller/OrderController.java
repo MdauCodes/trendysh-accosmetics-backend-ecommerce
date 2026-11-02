@@ -66,7 +66,6 @@ public class OrderController {
     @GetMapping
     public Page<OrderSummaryDto> list(@RequestParam(required = false) OrderStatus status,
                                        @RequestParam(required = false) String q,
-                                       @RequestParam(defaultValue = "false") boolean needsAttentionOnly,
                                        @RequestParam(defaultValue = "false") boolean queue,
                                        @RequestParam(required = false) String pickupPlace,
                                        @RequestParam(required = false) String paymentCode,
@@ -88,10 +87,10 @@ public class OrderController {
             Collection<OrderStatus> open = status == null ? QUEUE_STATUSES
                     : QUEUE_STATUSES.contains(status) ? List.of(status) : List.of();
             if (open.isEmpty()) return Page.empty(pageable);
-            return withPaymentCodes(orderRepository.searchQueue(open, term, phone, needsAttentionOnly, place, pageable)
+            return withPaymentCodes(orderRepository.searchQueue(open, term, phone, place, pageable)
                     .map(o -> o.withUrgency(now)));
         }
-        return withPaymentCodes(orderRepository.search(status, term, phone, needsAttentionOnly, place, codeFilter, pageable)
+        return withPaymentCodes(orderRepository.search(status, term, phone, place, codeFilter, pageable)
                 .map(o -> o.withUrgency(now)));
     }
 
@@ -119,21 +118,12 @@ public class OrderController {
     /**
      * Orders still waiting on staff. Dispatched and delivered orders are handled, so they drop out of the
      * queue (as do cancelled, failed and expired ones) — delivered is reached either by staff or by the
-     * customer confirming on the track page, or automatically for TumaBoda deliveries.
+     * customer confirming on the track page.
      */
     static final List<String> PAYMENT_CODE_FILTERS = List.of("WITH_CODE", "NO_CODE", "EXPIRED_NO_CODE");
 
     static final List<OrderStatus> QUEUE_STATUSES = List.of(
             OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.PICKING, OrderStatus.READY);
-
-    /** The Fulfilment tab's "Needs attention (N)" chip count — see {@code CustomerOrderRepository.countNeedingAttention}. */
-    @PreAuthorize("hasAuthority('PERM_ORDER_VIEW') or hasAuthority('PERM_ORDER_MANAGE_ALL')")
-    @GetMapping("/needs-attention-count")
-    public NeedsAttentionCount needsAttentionCount() {
-        return new NeedsAttentionCount(orderRepository.countNeedingAttention());
-    }
-
-    public record NeedsAttentionCount(long count) {}
 
     // Guest tracking (order number alone = status only; email = emailed code, then its orders) lives in
     // OrderTrackingController. It used to be here, returning a full order for a number plus email.

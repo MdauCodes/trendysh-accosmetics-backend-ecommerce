@@ -17,7 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,8 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 /**
  * The order-side features added on 2026-10-02, exercised through the real HTTP layer: customer returns (at the
- * original sale cost), the TumaBoda settlement ledger, the delivery-contact phone, the list-level "needs
- * attention" flag, the real Customers screen and the daily trend endpoint.
+ * original sale cost), the delivery-contact phone, the real Customers screen and the daily trend endpoint.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -40,6 +38,7 @@ class TodaysOrderFeaturesIntegrationTest {
     @Autowired private JwtService jwtService;
     @Autowired private StaffUserRepository staffUsers;
     @Autowired private CustomerOrderRepository orders;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private String token;
 
@@ -237,95 +236,38 @@ class TodaysOrderFeaturesIntegrationTest {
         assertThat(same.orderId()).isNull();
     }
 
-    // ---- needs attention (list level) ----
+    // ---- orders from when TumaBoda delivered ----
 
+    /** Its columns are still in the table with their values. The order reads as a delivery with a fee, nothing more. */
     @Test
-    void aDeadTumabodaDeliveryIsFlaggedInTheListAndCounted_andReroutingClearsIt() throws Exception {
+    void aPastTumabodaOrderStillOpensWithItsFee() throws Exception {
         Placed p = paidOrder("PICKUP", null);
-        long before = ok(get("/api/v1/orders/needs-attention-count")).get("count").asLong();
+        jdbc.update("""
+                UPDATE customer_order SET delivery_fee = 350, grand_total = grand_total + 350, dropoff_lat = -1.2921,
+                    dropoff_lng = 36.8219, tumaboda_delivery_id = ?, tumaboda_tracking_url = 'https://track.example/1',
+                    tumaboda_status = 'delivered', tumaboda_cost = 300, tumaboda_booking_attempts = 2
+                WHERE id = ?::uuid
+                """, "past-" + p.orderId(), p.orderId());
 
-        CustomerOrder order = orders.findById(UUID.fromString(p.orderId())).orElseThrow();
-        order.setTumabodaStatus("failed");
-        orders.save(order);
+        JsonNode detail = ok(get("/api/v1/orders/" + p.orderId()));
+        assertThat(detail.get("deliveryFee").asDouble()).isEqualTo(350.0);
+        assertThat(detail.get("grandTotal").asDouble()).isEqualTo(1350.0);
+        assertThat(detail.has("tumaboda")).isFalse();
+        assertThat(ok(get("/api/v1/orders").param("q", p.orderNo())).get("content")).hasSize(1);
 
-        assertThat(ok(get("/api/v1/orders/needs-attention-count")).get("count").asLong()).isEqualTo(before + 1);
-        JsonNode flagged = ok(get("/api/v1/orders").param("needsAttentionOnly", "true").param("q", p.orderNo()));
-        assertThat(flagged.get("content")).hasSize(1);
-        assertThat(flagged.get("content").get(0).get("needsAttention").asBoolean()).isTrue();
-
-        order = orders.findById(UUID.fromString(p.orderId())).orElseThrow();
-        order.setTumabodaRerouted(true);
-        orders.save(order);
-        assertThat(ok(get("/api/v1/orders").param("needsAttentionOnly", "true").param("q", p.orderNo()))
-                .get("content")).isEmpty();
-    }
-
-    // ---- TumaBoda settlement ledger ----
-
-    @Test
-    void aSettlementSweepsEveryOutstandingCostedDeliveryAndOnlyThose() throws Exception {
-        Placed costed = paidOrder("PICKUP", null);
-        Placed uncosted = paidOrder("PICKUP", null);
-        CustomerOrder order = orders.findById(UUID.fromString(costed.orderId())).orElseThrow();
-        order.setTumabodaCost(new BigDecimal("450.00"));
-        orders.save(order);
-
-        JsonNode outstanding = ok(get("/api/v1/admin/tumaboda-settlement/outstanding"));
-        assertThat(contains(outstanding.get("lines"), "orderNo", costed.orderNo())).isTrue();
-        assertThat(contains(outstanding.get("lines"), "orderNo", uncosted.orderNo())).isFalse();
-        assertThat(outstanding.get("totalOwed").asDouble()).isGreaterThanOrEqualTo(450.0);
-
-        // The amount is what the bank shows, and it is what is owed: anything else is refused unless confirmed.
-        String owed = outstanding.get("totalOwed").asText();
-        JsonNode settlement = ok(jsonBody(post("/api/v1/admin/tumaboda-settlement"),
-                "{\"settledAt\":\"2026-10-02\",\"amount\":" + owed + ",\"reference\":\"BANK-TEST\"}"));
-        assertThat(settlement.get("orderCount").asLong()).isGreaterThanOrEqualTo(1);
-
-        JsonNode after = ok(get("/api/v1/admin/tumaboda-settlement/outstanding"));
-        assertThat(contains(after.get("lines"), "orderNo", costed.orderNo())).isFalse();
-        assertThat(after.get("totalOwed").asDouble()).isZero();
-        JsonNode history = ok(get("/api/v1/admin/tumaboda-settlement/history"));
-        assertThat(contains(history, "reference", "BANK-TEST")).isTrue();
-
-        // A second settlement has nothing left to cover: refused, unless it is confirmed as an advance.
-        assertThat(status(jsonBody(post("/api/v1/admin/tumaboda-settlement"),
-                "{\"settledAt\":\"2026-10-02\",\"amount\":10}"))).isEqualTo(422);
-        assertThat(ok(jsonBody(post("/api/v1/admin/tumaboda-settlement"),
-                "{\"settledAt\":\"2026-10-02\",\"amount\":10,\"confirmDifference\":true}")).get("orderCount").asLong()).isZero();
-    }
-
-    /**
-     * Found in the 2026-10-06 live QA: KSh 5,000 was accepted against KSh 900 owed and the difference vanished, because a
-     * settlement clears everything owed whatever its amount. A different amount now needs an explicit confirmation.
-     */
-    @Test
-    void aSettlementThatIsNotWhatIsOwedIsRefusedWithBothFiguresUnlessConfirmed() throws Exception {
-        Placed costed = paidOrder("PICKUP", null);
-        CustomerOrder order = orders.findById(UUID.fromString(costed.orderId())).orElseThrow();
-        order.setTumabodaCost(new BigDecimal("450.00"));
-        orders.save(order);
-        String owed = ok(get("/api/v1/admin/tumaboda-settlement/outstanding")).get("totalOwed").asText();
-        BigDecimal tooMuch = new BigDecimal(owed).add(new BigDecimal("4100"));
-
-        MvcResult refused = mvc.perform(jsonBody(post("/api/v1/admin/tumaboda-settlement"),
-                "{\"settledAt\":\"2026-10-02\",\"amount\":" + tooMuch + "}")
-                .header("Authorization", "Bearer " + token)).andReturn();
-
-        assertThat(refused.getResponse().getStatus()).isEqualTo(422);
-        assertThat(refused.getResponse().getContentAsString()).contains("You owe TumaBoda KSh").contains("record it anyway");
-        assertThat(ok(get("/api/v1/admin/tumaboda-settlement/outstanding")).get("totalOwed").asText())
-                .as("a refused settlement clears nothing").isEqualTo(owed);
-
-        assertThat(ok(jsonBody(post("/api/v1/admin/tumaboda-settlement"),
-                "{\"settledAt\":\"2026-10-02\",\"amount\":" + tooMuch + ",\"confirmDifference\":true}"))
-                .get("orderCount").asLong()).isGreaterThanOrEqualTo(1);
     }
 
     @Test
-    void aSettlementNeedsAPositiveAmountAndADate() throws Exception {
-        assertThat(status(jsonBody(post("/api/v1/admin/tumaboda-settlement"),
-                "{\"settledAt\":\"2026-10-02\",\"amount\":0}"))).isEqualTo(400);
-        assertThat(status(jsonBody(post("/api/v1/admin/tumaboda-settlement"), "{\"amount\":10}"))).isEqualTo(400);
+    void theRemovedIntegrationsAnswerNothing() throws Exception {
+        for (String path : new String[] {"/api/v1/tumaboda/webhook", "/api/v1/public/tumaboda/quote",
+                "/api/v1/payments/coop/ins", "/api/v1/payments/mpesa/callback/anything"}) {
+            assertThat(mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andReturn().getResponse().getStatus()).as(path).isIn(401, 403);
+        }
+        for (String path : new String[] {"/api/v1/admin/tumaboda-settlement/outstanding", "/api/v1/admin/coop-bank/status",
+                "/api/v1/orders/needs-attention-count"}) {
+            assertThat(status(get(path))).as(path).isIn(400, 404);
+        }
     }
 
     // ---- real Customers screen ----

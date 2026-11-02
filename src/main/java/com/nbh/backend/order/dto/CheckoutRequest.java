@@ -12,11 +12,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 /**
- * {@code dropoffLat}/{@code dropoffLng} are the point the customer picked for a TumaBoda delivery. With
- * them (and the TumaBoda integration on) the order is booked through the API and the quoted fee is added
- * to the total; without them TumaBoda is arranged by phone as before.
- *
- * <p>{@code expectedSubtotal}/{@code expectedDeliveryFee} are what the customer was SHOWN. They are never
+ * {@code expectedSubtotal}/{@code expectedDeliveryFee} are what the customer was SHOWN. They are never
  * used to set a price (the server always charges its own): only to notice that the real amount is no
  * longer the one on screen and refuse with 409 {@code PRICE_CHANGED} instead of charging something else.
  * Both optional, so an older client that sends neither behaves as before.
@@ -34,8 +30,6 @@ public record CheckoutRequest(
         @NotNull FulfilmentType fulfilmentType,
         String deliveryAddress,
         @Pattern(regexp = "BODA|MATATU|COURIER", message = "deliveryMethod must be BODA, MATATU or COURIER") String deliveryMethod,
-        BigDecimal dropoffLat,
-        BigDecimal dropoffLng,
         @PositiveOrZero BigDecimal expectedSubtotal,
         @PositiveOrZero BigDecimal expectedDeliveryFee,
         /** Who the rider should call at drop-off, if different from {@code guestPhone}. Optional — null means "same as above". */
@@ -53,50 +47,43 @@ public record CheckoutRequest(
 
     /** The request as it was before Metro operators and the saved delivery existed. */
     public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,
-                           String deliveryAddress, String deliveryMethod, BigDecimal dropoffLat, BigDecimal dropoffLng,
+                           String deliveryAddress, String deliveryMethod,
                            BigDecimal expectedSubtotal, BigDecimal expectedDeliveryFee, String deliveryContactPhone,
                            DeliveryDetails deliveryDetails, String termsVersion, String privacyVersion) {
         this(customerName, guestEmail, guestPhone, fulfilmentType, deliveryAddress, deliveryMethod,
-                dropoffLat, dropoffLng, expectedSubtotal, expectedDeliveryFee, deliveryContactPhone, deliveryDetails,
+                expectedSubtotal, expectedDeliveryFee, deliveryContactPhone, deliveryDetails,
                 termsVersion, privacyVersion, null, null);
     }
 
-    /** The request as it was before the drop-off point existed: delivery arranged by phone. */
+    /** The bare request: delivery arranged by phone. */
     public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,
                            String deliveryAddress, String deliveryMethod) {
         this(customerName, guestEmail, guestPhone, fulfilmentType, deliveryAddress, deliveryMethod, null, null, null, null, null, null, null, null);
     }
 
-    /** The request as it was before the shown-price check existed. */
-    public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,
-                           String deliveryAddress, String deliveryMethod, BigDecimal dropoffLat, BigDecimal dropoffLng) {
-        this(customerName, guestEmail, guestPhone, fulfilmentType, deliveryAddress, deliveryMethod,
-                dropoffLat, dropoffLng, null, null, null, null, null, null);
-    }
-
     /** The request as it was before the delivery-contact phone existed. */
     public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,
-                           String deliveryAddress, String deliveryMethod, BigDecimal dropoffLat, BigDecimal dropoffLng,
+                           String deliveryAddress, String deliveryMethod,
                            BigDecimal expectedSubtotal, BigDecimal expectedDeliveryFee) {
         this(customerName, guestEmail, guestPhone, fulfilmentType, deliveryAddress, deliveryMethod,
-                dropoffLat, dropoffLng, expectedSubtotal, expectedDeliveryFee, null, null, null, null);
+                expectedSubtotal, expectedDeliveryFee, null, null, null, null);
     }
 
     /** The request as it was before the optional delivery details existed. */
     public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,
-                           String deliveryAddress, String deliveryMethod, BigDecimal dropoffLat, BigDecimal dropoffLng,
+                           String deliveryAddress, String deliveryMethod,
                            BigDecimal expectedSubtotal, BigDecimal expectedDeliveryFee, String deliveryContactPhone) {
         this(customerName, guestEmail, guestPhone, fulfilmentType, deliveryAddress, deliveryMethod,
-                dropoffLat, dropoffLng, expectedSubtotal, expectedDeliveryFee, deliveryContactPhone, null, null, null);
+                expectedSubtotal, expectedDeliveryFee, deliveryContactPhone, null, null, null);
     }
 
     /** The request as it was before the Terms of use and Privacy notice boxes existed. */
     public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,
-                           String deliveryAddress, String deliveryMethod, BigDecimal dropoffLat, BigDecimal dropoffLng,
+                           String deliveryAddress, String deliveryMethod,
                            BigDecimal expectedSubtotal, BigDecimal expectedDeliveryFee, String deliveryContactPhone,
                            DeliveryDetails deliveryDetails) {
         this(customerName, guestEmail, guestPhone, fulfilmentType, deliveryAddress, deliveryMethod,
-                dropoffLat, dropoffLng, expectedSubtotal, expectedDeliveryFee, deliveryContactPhone, deliveryDetails, null, null,
+                expectedSubtotal, expectedDeliveryFee, deliveryContactPhone, deliveryDetails, null, null,
                 null, null);
     }
 }

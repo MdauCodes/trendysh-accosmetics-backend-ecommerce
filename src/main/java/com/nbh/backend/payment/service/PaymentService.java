@@ -22,9 +22,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Both the real Daraja callback (once wired — see {@link DarajaPaymentGateway}'s
- * javadoc for what's missing) and a staff-triggered manual confirmation (cash,
- * bank transfer, or an M-Pesa till payment confirmed by phone) end up calling
+ * Every confirmation (a staff member's by hand, an approved customer code, an
+ * allocated bank credit) ends up calling
  * {@link #confirmSuccess}/{@link #markFailed} — there is exactly one place
  * that flips an order from PENDING_PAYMENT, regardless of how confirmation
  * arrived.
@@ -57,9 +56,8 @@ public class PaymentService {
 
     /**
      * {@code actualMethod} lets staff record how the customer really paid
-     * when confirming by hand — checkout always creates the record as MPESA,
-     * but under the pay-after-we-call flow it may turn out to be bank or cash.
-     * Null keeps whatever the record already says (the Daraja callback path).
+     * when confirming by hand: checkout creates the record as BANK, but it may
+     * turn out to be M-PESA or cash. Null keeps whatever the record already says.
      */
     @Transactional
     public PaymentRecord confirmSuccess(UUID paymentRecordId, String providerReference, String rawResponse,
@@ -71,7 +69,7 @@ public class PaymentService {
      * {@code allowRevive} is the way back from a payment staff marked failed by mistake, when the customer then shows
      * the M-PESA message: the payment is confirmed, the order comes back and its released stock is held again. It is
      * only ever set by a deliberate "the customer did pay" request from the order panel (or by a person allocating a
-     * bank credit). A stale Confirm on the Payments tab, an old customer claim being approved, or a late callback
+     * bank credit). A stale Confirm on the Payments tab or an old customer claim being approved
      * must NOT bring a payment back that someone had decided was failed, so without it a FAILED payment is refused.
      */
     @Transactional

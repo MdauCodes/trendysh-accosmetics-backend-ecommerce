@@ -62,7 +62,7 @@ import java.util.UUID;
  * correctness, and validation all come for free. The one thing those don't cover — fake
  * reviews/units-sold, which both require a backing {@link CustomerOrder} row via a NOT NULL FK —
  * is built directly via repository saves, deliberately NOT through the real checkout flow (which
- * would trigger real side effects: TumaBoda API calls, email sends, stock reservations that have no
+ * would trigger real side effects: email sends, stock reservations that have no
  * business firing for synthetic data).
  */
 @Service

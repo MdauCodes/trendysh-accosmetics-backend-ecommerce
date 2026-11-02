@@ -76,41 +76,4 @@ class DeliveryDetailsTest {
         assertThat(new DeliveryDetails("Kilimani\nNairobi", null, null, null, null, null, null, null, null)
                 .cleanedFor("MATATU").estate()).isEqualTo("Kilimani Nairobi");
     }
-
-    @Test
-    void theRiderReadsTheAddressThenTheWayToTheDoor() {
-        assertThat(DeliveryDetails.locationFor("Kilimani, Wood Avenue", everything().cleanedFor("BODA")))
-                .isEqualTo("Kilimani, Wood Avenue — Yaya Towers, 4th floor, door 12, Argwings Kodhek Rd, Kilimani"
-                        + " — Opposite the pharmacy — Note: Call at the gate");
-    }
-
-    @Test
-    void withNothingAddedTheLocationIsJustTheAddress() {
-        assertThat(DeliveryDetails.locationFor("  Kilimani, Wood Avenue ", null)).isEqualTo("Kilimani, Wood Avenue");
-        assertThat(DeliveryDetails.locationFor(null, null)).isEmpty();
-    }
-
-    @Test
-    void lineBreaksInANoteBecomeSeparatorsBecauseTheLocationIsOneLine() {
-        DeliveryDetails details = new DeliveryDetails(null, null, null, null, null, null, "Gate is blue\nCall me", null, null);
-        assertThat(DeliveryDetails.locationFor("Kilimani", details)).isEqualTo("Kilimani — Note: Gate is blue, Call me");
-    }
-
-    @Test
-    void aLongNoteIsCutShortRatherThanRiskingARefusedBooking() {
-        DeliveryDetails details = new DeliveryDetails(null, null, null, null, null, null, "x".repeat(400), null, null);
-
-        String location = DeliveryDetails.locationFor("Kilimani", details);
-
-        assertThat(location).hasSize(DeliveryDetails.MAX_LOCATION).startsWith("Kilimani — Note: xxx").endsWith("x…");
-    }
-
-    @Test
-    void theCutNeverLeavesHalfOfAnEmojiBehind() {
-        DeliveryDetails details = new DeliveryDetails(null, null, null, null, null, null, null, null, null);
-        // 253 letters, then emoji: the 254th character is the first half of the first emoji.
-        String location = DeliveryDetails.locationFor("a".repeat(253) + "😀😀", details);
-
-        assertThat(location).isEqualTo("a".repeat(253) + "…");
-    }
 }

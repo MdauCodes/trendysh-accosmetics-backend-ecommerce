@@ -1,5 +1,15 @@
 # Nairobi Beauty Hub / Trendysh Accosmetic Backend — Handoff
 
+## 2026-11-02 — M-Pesa STK, Co-op Bank and TumaBoda removed
+
+Owner: "all three of these are not active and are not being used so they should be thrown away and removed from the codebase as soon as possible. If needed later, we can add them."
+
+- **Gone:** `DarajaPaymentGateway` and the M-Pesa callback, `payment/coop` and the Co-op toggle, the whole `tumaboda` package (quotes, booking, webhook, retry and reconciliation jobs, settlement, address search), `app.payments.collection-mode` (checkout always collects by bank/paybill now), the orders "needs attention" flag and count (it only ever meant a TumaBoda problem).
+- **Stays, on purpose:** M-PESA Paybill is how customers pay: the code on the pay page, claims, staff confirming, `PaymentMethod.MPESA`. Bank credits stay because staff enter them by hand; `BankCredit.Source.IPN` stays so an old value still reads.
+- **No migration.** Every column and table stays where it is, unused: `customer_order.tumaboda_*`, `dropoff_lat/lng`, `tumaboda_settlement`, `common_delivery_area`, `payment_settings.coop_bank_enabled`, and the `customer_order_delivery_fee_only_for_tumaboda` check (the fee is now always 0 on new orders). Dropping them is a later, separate decision. An old order with a fee still reads "Delivery".
+- **Checked on real data:** a restore of the production dump of 2 Nov 01:16 had 32 orders and no TumaBoda, Daraja or bank-credit rows at all.
+- To bring one back later: this commit is the recipe, `git show` it.
+
 ## 2026-10-26 (START HERE) — kits are now packages (Flyway V76); the owner's queue
 
 **The full handoff is `J:\frontend\nairobi-beauty-hub-main\docs\handoff-2026-10-26.md`** (read it first). Everything through 24 Oct (V75)

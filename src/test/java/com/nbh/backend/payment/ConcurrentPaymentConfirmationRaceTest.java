@@ -42,8 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * §4 C2: {@code PaymentService.confirmSuccess}/{@code markFailed} used an
- * unlocked {@code findById}, so a Daraja callback retry racing a staff manual
- * confirmation (or a manual "fail" racing an arriving success callback) could
+ * unlocked {@code findById}, so a claim approval racing a staff manual
+ * confirmation (or a manual "fail" racing a confirmation) could
  * both read {@code INITIATED}, both pass their status guard, and both write —
  * e.g. {@code markFailed} releasing the stock of an order {@code confirmSuccess}
  * had already marked PAID in the same instant. Same "cannot exist in a mocked

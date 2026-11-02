@@ -26,8 +26,6 @@ import com.nbh.backend.payment.service.PaymentReferenceGenerator;
 import com.nbh.backend.stock.entity.StockReservation;
 import com.nbh.backend.stock.exception.InsufficientAvailabilityException;
 import com.nbh.backend.stock.service.StockReservationService;
-import com.nbh.backend.tumaboda.TumaBodaException;
-import com.nbh.backend.tumaboda.TumaBodaQuoteService;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -64,8 +62,6 @@ import java.util.List;
 @Service
 public class CheckoutService {
 
-    /** M-Pesa STK push: the customer answers a phone prompt within seconds. */
-    private static final long MPESA_RESERVATION_TTL_MINUTES = 15;
     private static final int REFERENCE_ATTEMPTS = 5;
 
     private final CartRepository cartRepository;
@@ -93,7 +89,6 @@ public class CheckoutService {
     private final PaymentReferenceGenerator referenceGenerator;
     private final BankPaymentSettings paymentSettings;
     private final int maxOpenOrdersPerContact;
-    private final TumaBodaQuoteService quoteService;
     private final PackageService packageService;
     private final VariantCovers variantCovers;
 
@@ -109,11 +104,9 @@ public class CheckoutService {
                             BankPaymentSettings paymentSettings,
                             @org.springframework.beans.factory.annotation.Value(
                                     "${app.checkout.max-open-orders-per-contact:3}") int maxOpenOrdersPerContact,
-                            TumaBodaQuoteService quoteService,
                             PackageService packageService,
                             VariantCovers variantCovers) {
         this.maxOpenOrdersPerContact = maxOpenOrdersPerContact;
-        this.quoteService = quoteService;
         this.packageService = packageService;
         this.variantCovers = variantCovers;
         this.cartRepository = cartRepository;
@@ -192,11 +185,6 @@ public class CheckoutService {
                     + " before placing another.");
         }
 
-        // A TumaBoda delivery booked through the API is quoted HERE, before the order exists and before
-        // any stock is locked: it is a network call to TumaBoda, and no stock-balance row may be held
-        // while it runs. The fee comes from the server's own quote, never from the request.
-        BigDecimal tumabodaFee = quoteTumabodaFeeIfBookedThroughApi(request, cartItems);
-
         CustomerOrder order = new CustomerOrder();
         order.setOrderNo(orderNoGenerator.next());
         order.setCustomerAccount(customer);
@@ -219,8 +207,7 @@ public class CheckoutService {
         }
         order.setFulfilmentType(request.fulfilmentType());
         order.setDeliveryAddress(request.deliveryAddress());
-        // Blank/same-as-main-phone is stored as null -- TumaBodaBookingService falls back to
-        // guestPhone itself, so there is exactly one place that fallback happens.
+        // Blank/same-as-main-phone is stored as null: null means "ring the order phone".
         String deliveryContact = request.deliveryContactPhone() == null || request.deliveryContactPhone().isBlank()
                 ? null
                 : PhoneNumbers.normalize(request.deliveryContactPhone());
@@ -257,23 +244,15 @@ public class CheckoutService {
         order.setStatus(OrderStatus.PENDING_PAYMENT);
         order.setSubtotal(BigDecimal.ZERO);
         order.setVatTotal(BigDecimal.ZERO);
-        // Zero unless a TumaBoda API delivery was quoted above; matatu, courier and phone-arranged
-        // TumaBoda deliveries are paid to the transporter directly, not through the shop.
-        order.setDeliveryFee(tumabodaFee == null ? BigDecimal.ZERO : tumabodaFee);
-        if (tumabodaFee != null) {
-            order.setDropoffLat(request.dropoffLat());
-            order.setDropoffLng(request.dropoffLng());
-        }
+        // Deliveries are paid to the transporter directly, not through the shop.
+        order.setDeliveryFee(BigDecimal.ZERO);
         order.setGrandTotal(BigDecimal.ZERO);
         order = orderRepository.save(order); // needs an id before reservations can reference it
 
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal vatTotal = BigDecimal.ZERO;
-        // The stock hold and the payment window are the same instant, always. A bank
-        // transfer takes far longer than answering an STK prompt, so its window is longer.
-        Instant expiresAt = Instant.now(clock).plus(paymentSettings.bankMode()
-                ? paymentSettings.paymentWindow()
-                : java.time.Duration.ofMinutes(MPESA_RESERVATION_TTL_MINUTES));
+        // The stock hold and the payment window are the same instant, always.
+        Instant expiresAt = Instant.now(clock).plus(paymentSettings.paymentWindow());
 
         // Phase 0 fix (2026-09-27), D1, extended for packages: reserve in a deterministic order (the
         // REAL variant id ASC) — the same order StockPostingService.post already locks its balance
@@ -441,15 +420,10 @@ public class CheckoutService {
 
         PaymentRecord paymentRecord = new PaymentRecord();
         paymentRecord.setOrder(order);
-        if (paymentSettings.bankMode()) {
-            paymentRecord.setProvider("BANK");
-            paymentRecord.setMethod(PaymentRecord.PaymentMethod.BANK);
-            paymentRecord.setPaymentReference(uniqueReference());
-            paymentRecord.setExpiresAt(expiresAt);
-        } else {
-            paymentRecord.setProvider("DARAJA");
-            paymentRecord.setMethod(PaymentRecord.PaymentMethod.MPESA);
-        }
+        paymentRecord.setProvider("BANK");
+        paymentRecord.setMethod(PaymentRecord.PaymentMethod.BANK);
+        paymentRecord.setPaymentReference(uniqueReference());
+        paymentRecord.setExpiresAt(expiresAt);
         paymentRecord.setAmount(order.getGrandTotal());
         paymentRecord.setStatus(PaymentRecord.PaymentStatus.INITIATED);
         paymentRecord = paymentRecordRepository.save(paymentRecord);
@@ -501,29 +475,6 @@ public class CheckoutService {
                     request.customerName(), request.guestPhone(), request.guestEmail());
         } catch (RuntimeException e) {
             log.warn("Could not record a stock shortfall at checkout: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * The delivery fee for a TumaBoda order booked through the API, or null when this order is not one:
-     * the method is not TumaBoda, the integration is off, or the customer gave no drop-off point (then it
-     * is arranged by phone, exactly as before). A drop-off TumaBoda cannot serve is refused rather than
-     * silently downgraded, so the customer is never charged for a delivery that will not happen.
-     */
-    private BigDecimal quoteTumabodaFeeIfBookedThroughApi(CheckoutRequest request, List<CartItem> cartItems) {
-        boolean tumaboda = request.fulfilmentType() == FulfilmentType.DELIVERY_COURIER
-                && "BODA".equals(request.deliveryMethod());
-        if (!tumaboda || request.dropoffLat() == null || request.dropoffLng() == null || !quoteService.enabled()) {
-            return null;
-        }
-        BigDecimal productValue = cartItems.stream()
-                .map(CartItem::getLineTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        try {
-            return quoteService.quote(request.dropoffLat(), request.dropoffLng(), productValue).totalKes();
-        } catch (TumaBodaException e) {
-            throw new UnprocessableException("TumaBoda can't deliver to that address right now. Please choose matatu or"
-                    + " courier, pick another address, or collect your order from the shop.");
         }
     }
 

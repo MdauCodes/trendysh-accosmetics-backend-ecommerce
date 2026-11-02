@@ -90,9 +90,8 @@ public class CartService {
     }
 
     /**
-     * What this session's basket holds, in KES, at TODAY's prices — the figure checkout sizes a TumaBoda
-     * delivery by, so a price previewed here and the price charged at checkout cannot disagree. Zero for
-     * an unknown, empty or already-checked-out session, and unlike {@link #getOrCreateCart} it never
+     * What this session's basket holds, in KES, at TODAY's prices — what staff see while entering an
+     * order. Zero for an unknown, empty or already-checked-out session, and unlike {@link #getOrCreateCart} it never
      * creates a cart (or writes anything: the basket itself is re-priced when it is read).
      */
     @Transactional(readOnly = true)
