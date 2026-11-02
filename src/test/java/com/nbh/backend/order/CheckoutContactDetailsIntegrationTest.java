@@ -90,6 +90,22 @@ class CheckoutContactDetailsIntegrationTest {
         return result.getResponse().getStatus();
     }
 
+    private MvcResult checkoutWithEmailJson(String emailField) throws Exception {
+        String body = """
+                {"customerName":"Test Customer",%s"guestPhone":"%s","fulfilmentType":"DELIVERY_COURIER",
+                 "deliveryAddress":"2NK — Nyeri, near the stage","deliveryMethod":"COURIER"}
+                """.formatted(emailField, TestContacts.phone());
+        return mvc.perform(post("/api/v1/checkout").header("X-Cart-Session", cartSessionWith(newVariantWithStock()))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn();
+    }
+
+    @Test
+    void anEmailIsOptionalButOneThatIsGivenMustBeAnAddress() throws Exception {
+        assertThat(statusOf(checkoutWithEmailJson(""))).isEqualTo(200);
+        assertThat(statusOf(checkoutWithEmailJson("\"guestEmail\":\"\",\n"))).isEqualTo(200);
+        assertThat(statusOf(checkoutWithEmailJson("\"guestEmail\":\"not-an-address\",\n"))).isEqualTo(400);
+    }
+
     @Test
     void aPhoneNumberStaffCouldNotRingIsRefusedAndTheCartIsLeftAloneToTryAgain() throws Exception {
         String session = cartSessionWith(newVariantWithStock());

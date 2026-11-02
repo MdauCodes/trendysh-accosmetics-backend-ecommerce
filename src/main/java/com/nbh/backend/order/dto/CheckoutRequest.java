@@ -25,7 +25,8 @@ import java.math.BigDecimal;
  */
 public record CheckoutRequest(
         @NotBlank @Size(max = 200) String customerName,
-        @NotBlank @Email String guestEmail,
+        /** Optional (owner, 2 Nov 2026): the phone is how the shop reaches a customer. */
+        @Email String guestEmail,
         @NotBlank String guestPhone,
         @NotNull FulfilmentType fulfilmentType,
         String deliveryAddress,
