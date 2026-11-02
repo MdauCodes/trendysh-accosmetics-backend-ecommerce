@@ -116,3 +116,5 @@ Removed from the server: the dumps, the restore script and the Coolify token fil
 **Deploys:** auto-deploy is off. A push to `main` reaches the live backend only after Deploy on `trendysh-backend` in Coolify.
 
 **2 Nov, 08:10 to 08:15 EAT backend deploy (owner's word in chat, by SSH).** `trendysh-backend` deployed at `3f94abc`, started from inside Coolify with `queue_application_deployment` because the API token had been deleted. Flyway applied V89 (more Metros). Healthy, 0 restarts. Copy of the database from just before it: `/opt/nbh/predeploy/trendysh-before-3f94abc.dump` (root only, customer data; delete once no longer needed). The repo has moved to `MdauCodes/...`; Coolify's address still reads `lezisign-star/...` and the fetch worked through GitHub's redirect.
+
+**2 Nov, 08:45 EAT automatic switch to online ordering (owner's word in chat).** New `OnlineOrderingLaunch` job, deployed at the commit below: at 12:00 EAT it sets the ordering switch to FULL, once, only if nobody has ever flipped it (`changed_by` still empty). Flipping the switch by hand before noon (even back to WHATSAPP) cancels it, and later settings are left alone.

@@ -25,6 +25,9 @@ app:
     # Known value for live/manual testing of the callback endpoint (§4 C1) —
     # never used outside the test profile.
     callback-secret: test-only-callback-secret-not-for-any-real-deployment
+  # The launch switch stays off in tests: the shared row must not flip by itself once the date has passed.
+  shop:
+    online-ordering-opens-at: 2099-01-01T00:00:00Z
   # Background sweepers are held off for an hour so they cannot fire while a test runs: Hibernate's
   # statistics (which OrderReadQueryCountTest asserts on) count statements from EVERY thread, so a
   # sweep landing mid-test made that count flaky. Tests that need a sweep call the sweeper directly.
