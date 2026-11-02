@@ -187,6 +187,19 @@ public class CustomerOrder extends BaseEntity {
     @Column(name = "customer_informed_at")
     private Instant customerInformedAt;
 
+    /** How the agreed delivery fee gets paid (V90); null until staff agree it with the customer. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_pay_way", length = 20)
+    private DeliveryPayWay deliveryPayWay;
+
+    @Column(name = "delivery_till", length = 40)
+    private String deliveryTill;
+
+    @Column(name = "delivery_terms_agreed_at")
+    private Instant deliveryTermsAgreedAt;
+
+    public enum DeliveryPayWay { ON_ARRIVAL, PAY_BUSINESS, PROVIDER_TILL }
+
     /** In the order they were entered (V70): a package's own products follow the package's line, in the package's order. */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNo ASC, id ASC")

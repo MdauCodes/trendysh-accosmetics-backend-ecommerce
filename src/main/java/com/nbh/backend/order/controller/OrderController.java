@@ -14,6 +14,7 @@ import com.nbh.backend.order.entity.CustomerOrder;
 import com.nbh.backend.order.entity.OrderStatus;
 import com.nbh.backend.order.repository.CustomerOrderRepository;
 import com.nbh.backend.order.service.OrderDetailService;
+import com.nbh.backend.order.service.OrderDeliveryTermsService;
 import com.nbh.backend.order.service.OrderFulfilmentService;
 import com.nbh.backend.order.service.OrderReturnService;
 import com.nbh.backend.staff.entity.StaffUser;
@@ -43,15 +44,17 @@ public class OrderController {
     private final OrderReturnService returnService;
     private final PaymentClaimRepository claimRepository;
     private final OrderDetailService orderDetails;
+    private final OrderDeliveryTermsService deliveryTerms;
 
     public OrderController(CustomerOrderRepository orderRepository, OrderFulfilmentService fulfilmentService,
                             OrderReturnService returnService, PaymentClaimRepository claimRepository,
-                            OrderDetailService orderDetails) {
+                            OrderDetailService orderDetails, OrderDeliveryTermsService deliveryTerms) {
         this.orderRepository = orderRepository;
         this.fulfilmentService = fulfilmentService;
         this.returnService = returnService;
         this.claimRepository = claimRepository;
         this.orderDetails = orderDetails;
+        this.deliveryTerms = deliveryTerms;
     }
 
     /**
@@ -144,6 +147,28 @@ public class OrderController {
     @Transactional
     public OrderDto assignTransporter(@PathVariable java.util.UUID id, @Valid @RequestBody AssignTransporterRequest request) {
         return OrderDto.from(fulfilmentService.assignTransporter(id, request));
+    }
+
+    /** The delivery fee agreed with the customer and how it gets paid, for the order page and its WhatsApp message. */
+    @PreAuthorize("hasAuthority('PERM_ORDER_MANAGE_ALL')")
+    @GetMapping("/{id}/delivery-terms")
+    public com.nbh.backend.order.dto.DeliveryTermsDtos.DeliveryTermsView deliveryTerms(@PathVariable java.util.UUID id) {
+        return deliveryTerms.view(id);
+    }
+
+    @PreAuthorize("hasAuthority('PERM_ORDER_MANAGE_ALL')")
+    @PostMapping("/{id}/delivery-terms")
+    public com.nbh.backend.order.dto.DeliveryTermsDtos.DeliveryTermsView agreeDeliveryTerms(@PathVariable java.util.UUID id,
+            @Valid @RequestBody com.nbh.backend.order.dto.DeliveryTermsDtos.DeliveryTermsRequest request) {
+        return deliveryTerms.agree(id, request);
+    }
+
+    /** The delivery fee on an order already paid for its products has reached the shop. */
+    @PreAuthorize("hasAuthority('PERM_ORDER_MANAGE_ALL')")
+    @PostMapping("/{id}/delivery-money")
+    public com.nbh.backend.order.dto.DeliveryTermsDtos.DeliveryTermsView deliveryMoney(@PathVariable java.util.UUID id,
+            @Valid @RequestBody com.nbh.backend.order.dto.DeliveryTermsDtos.DeliveryMoneyRequest request) {
+        return deliveryTerms.recordMoney(id, request);
     }
 
     /** Where the parcel was left and its receipt/waybill number. Settable after dispatch too. */

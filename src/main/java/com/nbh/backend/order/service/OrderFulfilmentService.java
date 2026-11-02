@@ -143,6 +143,13 @@ public class OrderFulfilmentService {
         if (!transporterPhone.matches("[0-9+()\\s-]+") || transporterPhone.replaceAll("\\D", "").length() < 9) {
             throw new IllegalArgumentException("Enter a phone number for the transporter, e.g. 0720 000 111");
         }
+        // A fee the customer pays the shop is part of the order's total, so it changes with the delivery terms, not here.
+        if (order.getDeliveryPayWay() == CustomerOrder.DeliveryPayWay.PAY_BUSINESS
+                && order.getAgreedDeliveryPrice() != null
+                && order.getAgreedDeliveryPrice().compareTo(request.agreedPrice()) != 0) {
+            throw new UnprocessableException("The customer agreed to pay the shop "
+                    + order.getAgreedDeliveryPrice().toPlainString() + " for delivery. Change it under Delivery and payment first.");
+        }
         order.setTransporterName(request.transporterName().trim());
         order.setTransporterPhone(PhoneNumbers.normalize(transporterPhone));
         order.setAgreedDeliveryPrice(request.agreedPrice());

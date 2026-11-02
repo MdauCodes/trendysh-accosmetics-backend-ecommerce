@@ -207,15 +207,13 @@ class MigrationUpgradePathTest {
     }
 
     @Test
-    void aDeliveryFeeIsAllowedOnlyAlongsideATumabodaDropoffPoint() throws Exception {
+    void aDeliveryFeeNoLongerNeedsADropoffPointButCannotBeNegative() throws Exception {
         try (Connection c = connect(); Statement s = c.createStatement()) {
-            assertThatThrownBy(() -> s.execute("UPDATE customer_order SET delivery_fee = 450 WHERE id = '" + pickupOrder + "'"))
-                    .as("V12's guard is narrowed, not gone")
-                    .hasMessageContaining("customer_order_delivery_fee_only_for_tumaboda");
-
-            s.execute("UPDATE customer_order SET delivery_fee = 450, dropoff_lat = -1.2921, dropoff_lng = 36.8219 WHERE id = '"
-                    + bodaOrder + "'");
-            s.execute("UPDATE customer_order SET delivery_fee = 0, dropoff_lat = NULL, dropoff_lng = NULL WHERE id = '" + bodaOrder + "'");
+            // V90: a fee is one the customer agreed to pay the shop, with no TumaBoda drop-off point behind it.
+            s.execute("UPDATE customer_order SET delivery_fee = 450 WHERE id = '" + bodaOrder + "'");
+            s.execute("UPDATE customer_order SET delivery_fee = 0 WHERE id = '" + bodaOrder + "'");
+            assertThatThrownBy(() -> s.execute("UPDATE customer_order SET delivery_fee = -1 WHERE id = '" + bodaOrder + "'"))
+                    .hasMessageContaining("customer_order_delivery_fee_not_negative");
         }
     }
 
