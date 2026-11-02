@@ -92,3 +92,25 @@ storage, and a test bucket `nbh-test` with its own key `nbh-backend-test` (read/
 never touch the shop's photos. Both secrets are only in `/opt/nbh/keys/*.env` (mode 600, root). The owner reads the backend key with
 `cat /opt/nbh/keys/nbh-backend.env` over SSH and pastes it into Admin > Settings > Integrations > Photo storage.
 To take them away: `docker exec nbh-garage /garage key delete --yes <name>`; `docker exec nbh-garage /garage bucket delete --yes nbh-test`.
+
+## 2 Nov 2026 (backend and database, owner: "we are going to do it right now")
+
+**00:58 to 01:41 EAT rehearsal.** The owner enabled Coolify's API and left a token in `/opt/nbh/keys/coolify-api-token` (root only; never printed).
+Coolify project `Trendysh Accosmetic` (pn3vcmppklgq0qnp3r80a4xn), database `trendysh-db` (bvhyc8vznoob4roxtw1npyyf, postgres:18-alpine, 2g, not public),
+application `trendysh-backend` (hfebfbsrgppsitkqaptcqoyi, branch main of lezisign-star/trendysh-accosmetics-backend-ecommerce through the GitHub app
+moments-coolify, 3g, https://api.trendyshaccosmetic.com, auto-deploy off). Dump of Railway (Postgres 18.6, migration 88) in `/opt/nbh/backend/`, restored
+with `--rehearsal` (5 saved keys removed from the copy), rehearsal-only environment: random JWT and secrets keys, no mail, payment, AI or photo keys.
+Built commit 227bafe, healthy, 0 errors in the log, 1.3 GB of 3 GB. Public catalogue, categories, packages, banners and shop mode byte-for-byte the same size as Railway's,
+same first product and total (1,044). Moments Core and VunjaBei answered 200 throughout. Railway untouched and still the live backend.
+
+**02:02 to 04:10 EAT the switch.** The owner stopped Railway's backend (Postgres left running) and copied Railway's variables into Coolify; `DATABASE_URL`, `POSTGRES_*` and `MPESA_*` were taken out again (`DATABASE_URL` would have pointed the new backend at Railway's database) and the new `DB_*` and `PORT` put back. Final dump with no other connection to Railway's database, restored without `--rehearsal`: all 77 tables equal in row count. Deployed 227bafe: healthy, 0 errors, 1.1 GB. The owner set `VITE_API_URL=https://api.trendyshaccosmetic.com/api/v1` on the Render sites and rebuilt them; signed in on trendyaccosmetics.site, Integrations shows the saved keys (so `JWT_SECRET` is Railway's) and a test upload reached the bucket from the new backend.
+Backups: nightly 03:00 EAT to the existing `backblaze-b2` storage (bucket `moments-db-backups-pkihara`, shared with other projects), 7 local, 30 days in the cloud. First run 03:00 on 2 Nov: 1.87 MB, Coolify records it uploaded. Restored the local copy in a throwaway `postgres:18-alpine`: 77 tables, row counts equal to the live database. The copy in B2 itself was not downloaded.
+Removed from the server: the dumps, the restore script and the Coolify token file. The owner's dumps stay on the PC in `~/trendysh-db-dumps`.
+
+### Still for the owner
+1. Change or remove Railway's database password (it was pasted in a chat) and, after the rollback window, shut Railway down.
+2. Coolify: delete the token `trendysh-deployment-api-token` and switch API access off.
+3. `gmcrimsoncutsltd.com` is in `CORS_ALLOWED_ORIGINS`, copied from Railway: remove it unless it is needed.
+4. Later: the unused test bucket `nbh-test` and key `nbh-backend-test`; an offsite copy of the photo bucket with a restore test, then the Cloudinary keys; clearing the edge cache when a photo is deleted.
+
+**Deploys:** auto-deploy is off. A push to `main` reaches the live backend only after Deploy on `trendysh-backend` in Coolify.
