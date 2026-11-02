@@ -21,7 +21,6 @@ public final class AdminPaymentDtos {
     // ---- customer -> the M-PESA code that completes an order: its last five characters at least (owner, 2026-10-28;
     // staff check every code against the statement); PaymentClaimService trims before it counts.
     public record ClaimRequest(
-            @NotBlank(message = "Enter the M-PESA code from your confirmation message")
             @Size(min = 5, max = 60, message = "Enter the last 5 characters of the M-PESA code from your confirmation message")
             String transactionCode,
             @NotNull @DecimalMin("1") BigDecimal amount,

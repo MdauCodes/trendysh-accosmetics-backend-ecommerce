@@ -24,7 +24,7 @@ public class TransportService {
     /** How many locations a shopper is offered as they type. */
     static final int SUGGESTED = 8;
 
-    public record OperatorDto(UUID id, String name, String areas) {}
+    public record OperatorDto(UUID id, String name, String areas, String kind) {}
 
     public record StopDto(UUID id, String name, BigDecimal fareMin, BigDecimal fareMax, boolean fareConfirmed) {
         static StopDto from(TransportStop s) {
@@ -32,9 +32,9 @@ public class TransportService {
         }
     }
 
-    public record StaffOperatorDto(UUID id, String name, String areas, boolean active, int sortOrder, int picks) {
+    public record StaffOperatorDto(UUID id, String name, String areas, boolean active, int sortOrder, int picks, String kind) {
         static StaffOperatorDto from(TransportOperator o) {
-            return new StaffOperatorDto(o.getId(), o.getName(), o.getAreas(), o.isActive(), o.getSortOrder(), o.getPicks());
+            return new StaffOperatorDto(o.getId(), o.getName(), o.getAreas(), o.isActive(), o.getSortOrder(), o.getPicks(), o.getKind());
         }
     }
 
@@ -47,13 +47,21 @@ public class TransportService {
     }
 
     public record SaveOperator(@NotBlank @Size(max = 80) String name, @Size(max = 300) String areas,
-                               Boolean active, Integer sortOrder) {}
+                               Boolean active, Integer sortOrder,
+                               @jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String kind) {
+        public SaveOperator(String name, String areas, Boolean active, Integer sortOrder) {
+            this(name, areas, active, sortOrder, null);
+        }
+    }
 
     public record SaveStop(@NotBlank @Size(max = 120) String name,
                            @DecimalMin("0") BigDecimal fareMin, @DecimalMin("0") BigDecimal fareMax, Boolean hidden) {}
 
     /** What an order carries from the shopper's Metro choice: the operator, the tidied location and its likely fare. */
     public record Resolved(UUID operatorId, String operatorName, String stopName, BigDecimal fareMin, BigDecimal fareMax) {}
+
+    /** A place the customer chose under a provider, and the price the order is charged. */
+    public record Priced(UUID operatorId, String operatorName, String placeName, BigDecimal price) {}
 
     private final TransportOperatorRepository operators;
     private final TransportStopRepository stops;
@@ -68,7 +76,7 @@ public class TransportService {
     @Transactional(readOnly = true)
     public List<OperatorDto> operatorsForShoppers() {
         return operators.activeForShoppers().stream()
-                .map(o -> new OperatorDto(o.getId(), o.getName(), o.getAreas())).toList();
+                .map(o -> new OperatorDto(o.getId(), o.getName(), o.getAreas(), o.getKind())).toList();
     }
 
     @Transactional(readOnly = true)
@@ -100,6 +108,27 @@ public class TransportService {
         return new Resolved(operator.getId(), operator.getName(), stop.getName(), stop.getFareMin(), stop.getFareMax());
     }
 
+    /** Every place with a price under this provider: what a customer chooses from. */
+    @Transactional(readOnly = true)
+    public List<StopDto> places(UUID operatorId) {
+        return stops.pricedFor(operatorId).stream().map(StopDto::from).toList();
+    }
+
+    /** The price of a place under a provider, at checkout. Null when that place is not this provider's or has no price. */
+    @Transactional
+    public Priced priceForOrder(UUID operatorId, UUID stopId) {
+        if (operatorId == null || stopId == null) return null;
+        TransportOperator operator = operators.findById(operatorId).filter(TransportOperator::isActive).orElse(null);
+        if (operator == null) return null;
+        TransportStop stop = stops.findById(stopId)
+                .filter(s -> s.getOperator().getId().equals(operatorId) && !s.isHidden() && s.getFareMin() != null)
+                .orElse(null);
+        if (stop == null) return null;
+        operators.countPick(operator.getId());
+        stops.countUse(stop.getId());
+        return new Priced(operator.getId(), operator.getName(), stop.getName(), stop.getFareMin());
+    }
+
     // ---- staff ----
 
     @Transactional(readOnly = true)
@@ -121,6 +150,7 @@ public class TransportService {
         o.setAreas(body.areas() == null || body.areas().isBlank() ? null : body.areas().trim());
         if (body.active() != null) o.setActive(body.active());
         if (body.sortOrder() != null) o.setSortOrder(body.sortOrder());
+        if (body.kind() != null) o.setKind(body.kind());
         return StaffOperatorDto.from(operators.save(o));
     }
 

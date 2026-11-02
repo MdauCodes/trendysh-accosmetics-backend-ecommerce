@@ -146,8 +146,8 @@ class OrderEmailsIntegrationTest {
         String link = "/pay/" + order.orderNo() + "?ref=" + order.reference();
 
         assertThat(subject).contains(order.orderNo()).containsIgnoringCase("pay with M-PESA");
-        assertThat(text).contains("Hi Njeri,").contains(link).contains("KSh 1,000").contains("M-PESA code");
-        assertThat(html).contains("href=\"http://localhost:5250" + link + "\"").contains("Pay and enter my M-PESA code")
+        assertThat(text).contains("Hi Njeri,").contains(link).contains("KSh 1,000").contains("M-PESA payment name");
+        assertThat(html).contains("href=\"http://localhost:5250" + link + "\"").contains("Pay and enter my M-PESA payment name")
                 .contains("KSh 1,000");
     }
 

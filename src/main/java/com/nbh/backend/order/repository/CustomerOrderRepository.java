@@ -92,6 +92,17 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
 
     boolean existsByGuestEmailIgnoreCase(String guestEmail);
 
+    /** Deliveries that left in the window and whose customer has not been asked yet whether they arrived. */
+    @Query("""
+            select o from CustomerOrder o
+            where o.fulfilmentType = com.nbh.backend.order.entity.FulfilmentType.DELIVERY_COURIER
+              and o.status in (com.nbh.backend.order.entity.OrderStatus.DISPATCHED, com.nbh.backend.order.entity.OrderStatus.DELIVERED)
+              and o.receivedCheckSentAt is null and o.dispatchedAt < :before and o.dispatchedAt >= :notBefore
+            order by o.dispatchedAt asc
+            """)
+    List<CustomerOrder> waitingForReceivedCheck(@Param("before") java.time.Instant before,
+                                                @Param("notBefore") java.time.Instant notBefore);
+
     /** Ids only — feeds {@code OrderExpiryService}, which then locks and re-checks each order itself. */
     @Query("select o.id from CustomerOrder o where o.status = :status")
     List<UUID> findIdsByStatus(@Param("status") OrderStatus status);

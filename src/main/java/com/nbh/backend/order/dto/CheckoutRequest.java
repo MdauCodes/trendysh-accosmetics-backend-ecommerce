@@ -44,7 +44,11 @@ public record CheckoutRequest(
         /** What the checkout keeps for a signed-in shopper's next order, as it sent it; at most 4,000 characters. */
         @Size(max = 4000) String deliveryProfile
 ) {
-    public record Transport(java.util.UUID operatorId, @Size(max = 200) String stop) {}
+    public record Transport(java.util.UUID operatorId, @Size(max = 200) String stop, java.util.UUID stopId) {
+        public Transport(java.util.UUID operatorId, String stop) {
+            this(operatorId, stop, null);
+        }
+    }
 
     /** The request as it was before Metro operators and the saved delivery existed. */
     public CheckoutRequest(String customerName, String guestEmail, String guestPhone, FulfilmentType fulfilmentType,

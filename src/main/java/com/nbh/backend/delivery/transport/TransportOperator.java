@@ -30,4 +30,8 @@ public class TransportOperator extends BaseEntity {
     /** How many orders chose it: the checkout lists the most chosen first. */
     @Column(nullable = false)
     private int picks;
+
+    /** METRO and RIDER carry within Nairobi and Kiambu; OUTSIDE (buses and couriers) beyond them (V91). */
+    @Column(nullable = false, length = 10)
+    private String kind = "METRO";
 }

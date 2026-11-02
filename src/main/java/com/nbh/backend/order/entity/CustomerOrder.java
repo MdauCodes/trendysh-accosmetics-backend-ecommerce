@@ -200,6 +200,13 @@ public class CustomerOrder extends BaseEntity {
 
     public enum DeliveryPayWay { ON_ARRIVAL, PAY_BUSINESS, PROVIDER_TILL }
 
+    /** When the order left the shop, and when staff asked the customer whether it arrived (V91). */
+    @Column(name = "dispatched_at")
+    private Instant dispatchedAt;
+
+    @Column(name = "received_check_sent_at")
+    private Instant receivedCheckSentAt;
+
     /** In the order they were entered (V70): a package's own products follow the package's line, in the package's order. */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNo ASC, id ASC")

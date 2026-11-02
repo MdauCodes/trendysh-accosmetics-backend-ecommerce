@@ -22,6 +22,8 @@ public record OrderDto(
         BigDecimal agreedDeliveryPrice,
         /** For a pickup order, which shop it waits at (the label the shopper chose at checkout); null for a delivery, whose address stays out of this view. */
         String pickupPlace,
+        /** Who carries it, in a few words: a rider, or the provider chosen at checkout. Not the address. */
+        String deliveryCarrier,
         /**
          * Only ever filled in for the order's own owner (a signed-in account, or a guest who proved their email) and only
          * while the order is still waiting on money: what opens the pay page, where the M-PESA code that completes the
@@ -40,11 +42,19 @@ public record OrderDto(
                 
                 order.getFulfilmentType() == com.nbh.backend.order.entity.FulfilmentType.PICKUP
                         ? order.getDeliveryAddress() : null,
+                carrierOf(order),
                 null);
+    }
+
+    private static String carrierOf(CustomerOrder order) {
+        if ("BODA".equals(order.getDeliveryMethod())) return "A rider";
+        String address = order.getDeliveryAddress();
+        int dash = address == null ? -1 : address.indexOf(" — ");
+        return dash > 0 ? address.substring(0, dash).trim() : null;
     }
 
     public OrderDto withPayRef(String reference) {
         return new OrderDto(id, orderNo, status, fulfilmentType, subtotal, vatTotal, deliveryFee, grandTotal, items,
-                createdAt, transporterName, transporterPhone, agreedDeliveryPrice, pickupPlace, reference);
+                createdAt, transporterName, transporterPhone, agreedDeliveryPrice, pickupPlace, deliveryCarrier, reference);
     }
 }

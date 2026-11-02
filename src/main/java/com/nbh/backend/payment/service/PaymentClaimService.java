@@ -86,9 +86,11 @@ public class PaymentClaimService {
                                LocalDate paidOn, String payerName) {
         // M-PESA codes are upper case; storing them that way means staff compare like with like on the statement.
         String code = transactionCode == null ? "" : transactionCode.trim().toUpperCase(Locale.ROOT);
-        if (code.length() < MIN_CODE_LENGTH) {
+        // The name on the M-PESA payment does instead of a code (owner, 2 Nov 2026): staff find it on the statement.
+        boolean byName = code.isEmpty() && payerName != null && payerName.trim().length() >= 2;
+        if (!byName && code.length() < MIN_CODE_LENGTH) {
             throw new IllegalArgumentException(
-                    "Enter the M-PESA code from your confirmation message (at least " + MIN_CODE_LENGTH + " characters)");
+                    "Enter the name on your M-PESA payment, or the M-PESA code from your confirmation message");
         }
         String normalised = referenceGenerator.normaliseAndValidate(reference);
         UUID paymentId = normalised == null ? null
@@ -124,7 +126,7 @@ public class PaymentClaimService {
             throw new IllegalArgumentException("Paying a different amount is not available online yet. Please pay the"
                     + " exact amount shown, or message us on WhatsApp and we'll sort it out.");
         }
-        if (claimRepository.existsByPaymentIdAndTransactionCodeIgnoreCase(payment.getId(), code)) {
+        if (!byName && claimRepository.existsByPaymentIdAndTransactionCodeIgnoreCase(payment.getId(), code)) {
             throw new ConflictException("You've already sent us that transaction code");
         }
         if (claimRepository.countByPaymentIdAndStatus(payment.getId(), PaymentClaim.ClaimStatus.PENDING)

@@ -267,6 +267,7 @@ public class OrderFulfilmentService {
         }
 
         order.setStatus(OrderStatus.DISPATCHED);
+        order.setDispatchedAt(java.time.Instant.now());
         order = orderRepository.save(order);
 
         // §2: the designated seam for a staff/courier notification — see

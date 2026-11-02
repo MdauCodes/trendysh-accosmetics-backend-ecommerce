@@ -45,16 +45,19 @@ public class OrderController {
     private final PaymentClaimRepository claimRepository;
     private final OrderDetailService orderDetails;
     private final OrderDeliveryTermsService deliveryTerms;
+    private final com.nbh.backend.order.service.OrderReceivedCheckService receivedChecks;
 
     public OrderController(CustomerOrderRepository orderRepository, OrderFulfilmentService fulfilmentService,
                             OrderReturnService returnService, PaymentClaimRepository claimRepository,
-                            OrderDetailService orderDetails, OrderDeliveryTermsService deliveryTerms) {
+                            OrderDetailService orderDetails, OrderDeliveryTermsService deliveryTerms,
+                            com.nbh.backend.order.service.OrderReceivedCheckService receivedChecks) {
         this.orderRepository = orderRepository;
         this.fulfilmentService = fulfilmentService;
         this.returnService = returnService;
         this.claimRepository = claimRepository;
         this.orderDetails = orderDetails;
         this.deliveryTerms = deliveryTerms;
+        this.receivedChecks = receivedChecks;
     }
 
     /**
@@ -147,6 +150,19 @@ public class OrderController {
     @Transactional
     public OrderDto assignTransporter(@PathVariable java.util.UUID id, @Valid @RequestBody AssignTransporterRequest request) {
         return OrderDto.from(fulfilmentService.assignTransporter(id, request));
+    }
+
+    /** Deliveries that left before today, whose customer has not been asked whether they arrived. */
+    @PreAuthorize("hasAuthority('PERM_ORDER_MANAGE_ALL')")
+    @GetMapping("/received-check")
+    public java.util.List<com.nbh.backend.order.service.OrderReceivedCheckService.ReceivedCheck> receivedCheck() {
+        return receivedChecks.waiting();
+    }
+
+    @PreAuthorize("hasAuthority('PERM_ORDER_MANAGE_ALL')")
+    @PostMapping("/{id}/received-check-sent")
+    public void receivedCheckSent(@PathVariable java.util.UUID id) {
+        receivedChecks.markSent(id);
     }
 
     /** The delivery fee agreed with the customer and how it gets paid, for the order page and its WhatsApp message. */

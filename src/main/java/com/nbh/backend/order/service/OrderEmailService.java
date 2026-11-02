@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 
 /**
  * The emails about an order (owner's decision, 2026-10-06): one when it is placed, with the way to pay and the link back
- * to the page that takes the M-PESA code; one reminder if that code has not arrived after a while; and a receipt when
+ * to the page that takes the M-PESA payment name; one reminder if that code has not arrived after a while; and a receipt when
  * the payment is confirmed. Before this the shop sent no order emails at all.
  *
  * <p>An email is requested as a {@link CustomerEmailRequestedEvent}, so it only goes out once the transaction that
@@ -65,7 +65,7 @@ public class OrderEmailService {
         this.frontendUrl = frontendUrl.replaceAll("/+$", "");
     }
 
-    /** "Your order is saved, one more step": the way to pay and the link to type the M-PESA code. */
+    /** "Your order is saved, one more step": the way to pay and the link to type the M-PESA payment name. */
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public void orderPlaced(UUID orderId) {
         CustomerOrder order = orderRepository.findById(orderId).orElse(null);
@@ -79,23 +79,23 @@ public class OrderEmailService {
 
         String intro = "Thank you for ordering from Trendysh. Your items are reserved"
                 + (until == null ? "" : " until " + until)
-                + ". Pay with M-PESA Paybill, then type the confirmation code M-PESA texts you on the payment page: "
-                + "your order is complete once we have that code.";
+                + ". Pay with M-PESA Paybill, then type the name on your M-PESA payment on the payment page: "
+                + "your order is complete once we have it.";
         List<Fact> facts = payFacts(instructions);
         String payLink = payLink(order, payment);
 
         send(order, "Order " + order.getOrderNo() + ": pay with M-PESA to complete it",
-                text(firstName, "Your order is saved, one more step", intro, facts, order, "Pay and enter your M-PESA code:", payLink,
-                        "Already paid? Open that link and type the code from your M-PESA message. Questions? WhatsApp us on "
+                text(firstName, "Your order is saved, one more step", intro, facts, order, "Pay and enter your M-PESA payment name:", payLink,
+                        "Already paid? Open that link and type the name on your M-PESA payment. Questions? WhatsApp us on "
                                 + instructions.supportWhatsapp() + "."),
                 EmailTemplates.orderMessage(logoUrl(), firstName, "Your order is saved, one more step", intro, facts,
-                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Pay and enter my M-PESA code", payLink,
-                        "Already paid? Open the link and type the code from your M-PESA message. Questions? WhatsApp us on "
+                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Pay and enter my M-PESA payment name", payLink,
+                        "Already paid? Open the link and type the name on your M-PESA payment. Questions? WhatsApp us on "
                                 + instructions.supportWhatsapp() + "."));
     }
 
     /**
-     * The one reminder: the customer placed an order, has not entered the M-PESA code that completes it, and the stock
+     * The one reminder: the customer placed an order, has not entered the M-PESA payment name that completes it, and the stock
      * is still held for them. Called inside the reminder job's own transaction, with the order and payment it just locked.
      */
     public void paymentReminder(CustomerOrder order, PaymentRecord payment) {
@@ -106,17 +106,17 @@ public class OrderEmailService {
         String firstName = firstName(order);
         String until = payment.getExpiresAt() == null ? null : CLOCK.format(payment.getExpiresAt());
 
-        String intro = "You placed order " + order.getOrderNo() + " a little while ago, but we haven't received the M-PESA code "
-                + "that completes it. If you've already paid, open the payment page and type the code from your M-PESA message. "
+        String intro = "You placed order " + order.getOrderNo() + " a little while ago, but we haven't received the M-PESA payment name "
+                + "that completes it. If you've already paid, open the payment page and type the name on your M-PESA payment. "
                 + (until == null ? "" : "If you haven't paid yet, your items are reserved until " + until + ".");
         List<Fact> facts = payFacts(instructions);
         String payLink = payLink(order, payment);
 
-        send(order, "Reminder: we still need your M-PESA code for order " + order.getOrderNo(),
-                text(firstName, "We still need your M-PESA code", intro, facts, order, "Type your M-PESA code here:", payLink,
+        send(order, "Reminder: we still need your M-PESA payment name for order " + order.getOrderNo(),
+                text(firstName, "We still need your M-PESA payment name", intro, facts, order, "Type your M-PESA payment name here:", payLink,
                         "Need help? WhatsApp us on " + instructions.supportWhatsapp() + "."),
-                EmailTemplates.orderMessage(logoUrl(), firstName, "We still need your M-PESA code", intro, facts,
-                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Enter my M-PESA code", payLink,
+                EmailTemplates.orderMessage(logoUrl(), firstName, "We still need your M-PESA payment name", intro, facts,
+                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Enter my M-PESA payment name", payLink,
                         "Need help? WhatsApp us on " + instructions.supportWhatsapp() + "."));
     }
 

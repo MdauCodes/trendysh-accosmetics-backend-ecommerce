@@ -97,6 +97,7 @@ public class AdminPaymentService {
     private String sameEndingOrderNo(PaymentClaim claim) {
         UUID paymentId = claim.getPayment().getId();
         String code = claim.getTransactionCode();
+        if (code == null || code.isBlank()) return null; // sent by name: there is no code to compare
         return paymentRecordRepository.findFirstByProviderReferenceEndingWithIgnoreCaseAndIdNot(code, paymentId)
                 .map(p -> p.getOrder().getOrderNo())
                 .or(() -> claimRepository

@@ -224,7 +224,7 @@ public class CheckoutService {
                 order);
         // A Metro (V82): the operator chosen and where it is dropped, tidied and kept for the next shopper of that
         // operator, with the likely fare the shopper was shown (paid to the conductor on delivery).
-        if (transport != null && request.transport() != null
+        if (transport != null && request.transport() != null && request.transport().stopId() == null
                 && request.fulfilmentType() == FulfilmentType.DELIVERY_COURIER && "MATATU".equals(request.deliveryMethod())) {
             var resolved = transport.resolveForOrder(request.transport().operatorId(), request.transport().stop());
             if (resolved != null) {
@@ -244,9 +244,21 @@ public class CheckoutService {
         order.setStatus(OrderStatus.PENDING_PAYMENT);
         order.setSubtotal(BigDecimal.ZERO);
         order.setVatTotal(BigDecimal.ZERO);
-        // Deliveries are paid to the transporter directly, not through the shop.
         order.setDeliveryFee(BigDecimal.ZERO);
-        order.setGrandTotal(BigDecimal.ZERO);
+        // A place chosen under a provider has a price, paid with the order before delivery (owner, 2 Nov 2026). Without
+        // one, staff quote it on the order page.
+        if (transport != null && request.transport() != null && request.transport().stopId() != null
+                && request.fulfilmentType() == FulfilmentType.DELIVERY_COURIER) {
+            var priced = transport.priceForOrder(request.transport().operatorId(), request.transport().stopId());
+            if (priced != null) {
+                order.setTransportOperatorId(priced.operatorId());
+                order.setDeliveryFee(priced.price());
+                order.setAgreedDeliveryPrice(priced.price());
+                order.setDeliveryPayWay(CustomerOrder.DeliveryPayWay.PAY_BUSINESS);
+                order.setDeliveryTermsAgreedAt(java.time.Instant.now());
+            }
+        }
+        order.setGrandTotal(order.getDeliveryFee());
         order = orderRepository.save(order); // needs an id before reservations can reference it
 
         BigDecimal subtotal = BigDecimal.ZERO;

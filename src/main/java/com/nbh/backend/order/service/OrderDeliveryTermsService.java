@@ -69,13 +69,14 @@ public class OrderDeliveryTermsService {
         if (request.payWay() == DeliveryPayWay.PROVIDER_TILL && till.isEmpty()) {
             throw new IllegalArgumentException("Enter the provider's till number");
         }
-        if (feePaidToTheShop(order)) {
-            throw new UnprocessableException("The delivery fee on order " + order.getOrderNo()
-                    + " has already been paid to the shop, so it can no longer be changed");
-        }
-
         BigDecimal newFee = request.payWay() == DeliveryPayWay.PAY_BUSINESS ? request.fee() : BigDecimal.ZERO;
-        order.setGrandTotal(order.getGrandTotal().subtract(order.getDeliveryFee()).add(newFee));
+        BigDecimal newTotal = order.getGrandTotal().subtract(order.getDeliveryFee()).add(newFee);
+        // Money already with the shop: a higher charge is owed as a balance, but taking any back is a refund, done by hand.
+        if (paidOrLater(order) && newTotal.compareTo(received(order)) < 0) {
+            throw new UnprocessableException("The delivery fee on order " + order.getOrderNo()
+                    + " has already been paid to the shop, so it can only go up");
+        }
+        order.setGrandTotal(newTotal);
         order.setDeliveryFee(newFee);
         order.setAgreedDeliveryPrice(request.fee());
         order.setDeliveryPayWay(request.payWay());
@@ -125,10 +126,6 @@ public class OrderDeliveryTermsService {
             return BigDecimal.ZERO;
         }
         return order.getGrandTotal().subtract(received(order)).max(BigDecimal.ZERO);
-    }
-
-    private boolean feePaidToTheShop(CustomerOrder order) {
-        return order.getDeliveryFee().signum() > 0 && paidOrLater(order) && owed(order).signum() == 0;
     }
 
     private static boolean paidOrLater(CustomerOrder order) {

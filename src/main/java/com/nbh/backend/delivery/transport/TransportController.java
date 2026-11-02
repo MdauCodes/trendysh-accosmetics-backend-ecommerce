@@ -33,6 +33,11 @@ public class TransportController {
         return service.suggest(id, q.length() > 120 ? q.substring(0, 120) : q);
     }
 
+    @GetMapping("/api/v1/public/delivery/operators/{id}/places")
+    public List<TransportService.StopDto> places(@PathVariable UUID id) {
+        return service.places(id);
+    }
+
     @GetMapping("/api/v1/admin/delivery/operators")
     @PreAuthorize("hasAnyAuthority('PERM_SETTINGS_MANAGE','PERM_ORDER_MANAGE_ALL')")
     public List<TransportService.StaffOperatorDto> staffOperators() {

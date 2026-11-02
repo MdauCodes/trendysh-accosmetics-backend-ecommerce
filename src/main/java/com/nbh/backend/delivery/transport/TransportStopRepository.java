@@ -22,6 +22,10 @@ public interface TransportStopRepository extends JpaRepository<TransportStop, UU
             """)
     List<TransportStop> suggest(@Param("operatorId") UUID operatorId, @Param("key") String key, Pageable page);
 
+    /** The places a customer can choose under a provider: only those with a price. */
+    @Query("select s from TransportStop s where s.operator.id = :operatorId and s.hidden = false and s.fareMin is not null order by s.name asc")
+    List<TransportStop> pricedFor(@Param("operatorId") UUID operatorId);
+
     @Query("select s from TransportStop s where s.operator.id = :operatorId order by s.hidden asc, s.uses desc, s.name asc")
     List<TransportStop> allForStaff(@Param("operatorId") UUID operatorId);
 
