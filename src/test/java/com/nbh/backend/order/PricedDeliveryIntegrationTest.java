@@ -103,8 +103,7 @@ class PricedDeliveryIntegrationTest {
         assertThat(operator("Rider (boda boda)").get("kind").asText()).isEqualTo("RIDER");
         assertThat(operator("Super Metro").get("kind").asText()).isEqualTo("METRO");
         assertThat(operator("2NK").get("kind").asText()).isEqualTo("OUTSIDE");
-        assertThat(operator("G4S").get("kind").asText()).isEqualTo("OUTSIDE");
-        for (String name : new String[] {"Meru Nissan", "Unique Shuttle", "Luxury Shuttle", "Wells Fargo", "Kukena"}) {
+        for (String name : new String[] {"Meru Nissan", "Unique Shuttle", "Luxury Shuttle", "Kukena"}) {
             assertThat(operator(name).get("kind").asText()).as(name).isEqualTo("OUTSIDE");
         }
         JsonNode places = okPublic("/api/v1/public/delivery/operators/" + operator("Super Metro").get("id").asText() + "/places");
@@ -113,12 +112,24 @@ class PricedDeliveryIntegrationTest {
     }
 
     @Test
+    void couriersOffTheListAreOnlyReachedByTypingAndHaveNoPrice() throws Exception {
+        for (JsonNode o : okPublic("/api/v1/public/delivery/operators")) {
+            assertThat(o.get("name").asText().toLowerCase()).doesNotContain("g4s", "wells fargo", "pickup mtaani");
+        }
+        MvcResult placed = checkout("COURIER", "G4S — Nyeri, near the stage", "null", "0");
+        assertThat(placed.getResponse().getStatus()).isEqualTo(200);
+        JsonNode order = json.readTree(placed.getResponse().getContentAsString()).get("order");
+        assertThat(order.get("deliveryFee").decimalValue()).isEqualByComparingTo("0");
+        assertThat(order.get("deliveryCarrier").asText()).isEqualTo("G4S");
+    }
+
+    @Test
     void thePlacesPriceIsChargedWithTheOrder() throws Exception {
-        JsonNode operator = operator("G4S");
+        JsonNode operator = operator("Easy Coach");
         JsonNode place = place(operator.get("id").asText(), "Kisumu");
         String fee = place.get("fareMin").asText();
 
-        MvcResult placed = checkout("COURIER", "G4S — Kisumu", pricedTransport(operator, place), fee);
+        MvcResult placed = checkout("COURIER", "Easy Coach — Kisumu", pricedTransport(operator, place), fee);
         assertThat(placed.getResponse().getStatus()).as(placed.getResponse().getContentAsString()).isEqualTo(200);
         JsonNode body = json.readTree(placed.getResponse().getContentAsString());
         assertThat(body.get("order").get("deliveryFee").decimalValue()).isEqualByComparingTo(fee);
@@ -135,17 +146,17 @@ class PricedDeliveryIntegrationTest {
 
     @Test
     void aPriceChangedSinceTheCustomerSawItIsRefusedNotChargedQuietly() throws Exception {
-        JsonNode operator = operator("G4S");
+        JsonNode operator = operator("2NK");
         JsonNode place = place(operator.get("id").asText(), "Nyeri");
-        MvcResult refused = checkout("COURIER", "G4S — Nyeri", pricedTransport(operator, place), "1");
+        MvcResult refused = checkout("COURIER", "2NK — Nyeri", pricedTransport(operator, place), "1");
         assertThat(refused.getResponse().getStatus()).isEqualTo(409);
     }
 
     @Test
     void aPlaceOfAnotherProviderIsNotPriced() throws Exception {
-        JsonNode g4s = operator("G4S");
+        JsonNode easyCoach = operator("Easy Coach");
         JsonNode metroPlace = place(operator("Super Metro").get("id").asText(), "Nairobi CBD");
-        MvcResult placed = checkout("COURIER", "Somewhere", pricedTransport(g4s, metroPlace), null);
+        MvcResult placed = checkout("COURIER", "Somewhere", pricedTransport(easyCoach, metroPlace), null);
         assertThat(placed.getResponse().getStatus()).isEqualTo(200);
         JsonNode order = json.readTree(placed.getResponse().getContentAsString()).get("order");
         assertThat(order.get("deliveryFee").decimalValue()).isEqualByComparingTo("0");
@@ -162,9 +173,9 @@ class PricedDeliveryIntegrationTest {
 
     @Test
     void aPaidFeeCanOnlyGoUpAndTheDifferenceIsOwed() throws Exception {
-        JsonNode operator = operator("G4S");
+        JsonNode operator = operator("Meru Nissan");
         JsonNode place = place(operator.get("id").asText(), "Meru");
-        JsonNode body = json.readTree(checkout("COURIER", "G4S — Meru", pricedTransport(operator, place), place.get("fareMin").asText())
+        JsonNode body = json.readTree(checkout("COURIER", "Meru Nissan — Meru", pricedTransport(operator, place), place.get("fareMin").asText())
                 .getResponse().getContentAsString());
         String id = body.get("order").get("id").asText();
         okStaff(post("/api/v1/payments/" + body.get("paymentRecordId").asText() + "/confirm-manual")

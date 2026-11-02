@@ -111,6 +111,7 @@ public class TransportService {
     /** Every place with a price under this provider: what a customer chooses from. */
     @Transactional(readOnly = true)
     public List<StopDto> places(UUID operatorId) {
+        if (operators.findById(operatorId).filter(TransportOperator::isActive).isEmpty()) return List.of();
         return stops.pricedFor(operatorId).stream().map(StopDto::from).toList();
     }
 
