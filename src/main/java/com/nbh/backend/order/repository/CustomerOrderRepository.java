@@ -92,9 +92,6 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
 
     boolean existsByGuestEmailIgnoreCase(String guestEmail);
 
-    @Query("select o from CustomerOrder o where o.createdAt < :before order by o.createdAt desc")
-    List<CustomerOrder> createdBefore(@Param("before") java.time.Instant before);
-
     /** Deliveries that left in the window and whose customer has not been asked yet whether they arrived. */
     @Query("""
             select o from CustomerOrder o
