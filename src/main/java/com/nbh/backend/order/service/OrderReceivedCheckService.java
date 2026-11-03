@@ -29,10 +29,13 @@ public class OrderReceivedCheckService {
 
     private final CustomerOrderRepository orders;
     private final Clock clock;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
-    public OrderReceivedCheckService(CustomerOrderRepository orders, Clock clock) {
+    public OrderReceivedCheckService(CustomerOrderRepository orders, Clock clock,
+            org.springframework.context.ApplicationEventPublisher events) {
         this.orders = orders;
         this.clock = clock;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +54,7 @@ public class OrderReceivedCheckService {
         if (order.getReceivedCheckSentAt() == null) {
             order.setReceivedCheckSentAt(clock.instant());
             orders.save(order);
+            events.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), false));
         }
     }
 }

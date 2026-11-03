@@ -40,14 +40,17 @@ public class OrderDeliveryTermsService {
     private final PaymentInstructionsService paymentInstructions;
     private final BankPaymentSettings bankSettings;
     private final Clock clock;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public OrderDeliveryTermsService(CustomerOrderRepository orders, PaymentRecordRepository payments,
-            PaymentInstructionsService paymentInstructions, BankPaymentSettings bankSettings, Clock clock) {
+            PaymentInstructionsService paymentInstructions, BankPaymentSettings bankSettings, Clock clock,
+            org.springframework.context.ApplicationEventPublisher events) {
         this.orders = orders;
         this.payments = payments;
         this.paymentInstructions = paymentInstructions;
         this.bankSettings = bankSettings;
         this.clock = clock;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +90,7 @@ public class OrderDeliveryTermsService {
             payments.findByOrderId(orderId).stream().filter(OrderDeliveryTermsService::open)
                     .forEach(p -> p.setAmount(order.getGrandTotal()));
         }
+        events.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), true));
         return viewOf(orders.save(order));
     }
 
@@ -106,6 +110,7 @@ public class OrderDeliveryTermsService {
         record.setAmount(owed);
         record.setStatus(PaymentRecord.PaymentStatus.SUCCESS);
         payments.save(record);
+        events.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), true));
         return viewOf(order);
     }
 

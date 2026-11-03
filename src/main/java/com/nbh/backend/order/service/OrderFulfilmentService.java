@@ -153,6 +153,7 @@ public class OrderFulfilmentService {
         order.setTransporterName(request.transporterName().trim());
         order.setTransporterPhone(PhoneNumbers.normalize(transporterPhone));
         order.setAgreedDeliveryPrice(request.agreedPrice());
+        eventPublisher.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), true));
         return orderRepository.save(order);
     }
 
@@ -176,6 +177,7 @@ public class OrderFulfilmentService {
         if (changed) {
             order.setCustomerInformedAt(null);
         }
+        eventPublisher.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), true));
         return orderRepository.save(order);
     }
 
@@ -184,6 +186,7 @@ public class OrderFulfilmentService {
     public CustomerOrder markCustomerInformed(java.util.UUID orderId) {
         CustomerOrder order = phoneArrangedOrder(orderId);
         order.setCustomerInformedAt(java.time.Instant.now());
+        eventPublisher.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), false));
         return orderRepository.save(order);
     }
 

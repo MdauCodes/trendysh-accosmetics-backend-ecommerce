@@ -209,6 +209,7 @@ public class PaymentClaimService {
         }
         PaymentClaim claim = lockPending(claimId);
         resolve(claim, PaymentClaim.ClaimStatus.REJECTED, staffEmail, note);
+        eventPublisher.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(claim.getPayment().getOrder().getOrderNo(), true));
         return claim;
     }
 

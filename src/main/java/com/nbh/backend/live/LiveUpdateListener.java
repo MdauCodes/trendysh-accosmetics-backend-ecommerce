@@ -89,6 +89,14 @@ public class LiveUpdateListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onOrderChanged(com.nbh.backend.common.event.OrderChangedEvent event) {
+        streams.publishToStaff(AdminEvent.of(AdminEvent.Type.ORDER_UPDATED, event.orderNo()));
+        if (event.tellCustomer()) {
+            streams.publishToOrder(event.orderNo());
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onPaymentClaimSubmitted(PaymentClaimSubmittedEvent event) {
         streams.publishToStaff(new AdminEvent(AdminEvent.Type.PAYMENT_CLAIMED, event.orderNo(), event.amountClaimed()));
         streams.publishToOrder(event.orderNo());

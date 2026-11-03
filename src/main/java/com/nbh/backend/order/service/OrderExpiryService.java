@@ -41,9 +41,13 @@ public class OrderExpiryService {
     private final PaymentRecordRepository paymentRecordRepository;
     private final Clock clock;
 
+    private final org.springframework.context.ApplicationEventPublisher events;
+
     public OrderExpiryService(CustomerOrderRepository orderRepository, StockReservationService reservationService,
-                              PaymentRecordRepository paymentRecordRepository, Clock clock) {
+                              PaymentRecordRepository paymentRecordRepository, Clock clock,
+                              org.springframework.context.ApplicationEventPublisher events) {
         this.orderRepository = orderRepository;
+        this.events = events;
         this.reservationService = reservationService;
         this.paymentRecordRepository = paymentRecordRepository;
         this.clock = clock;
@@ -82,6 +86,7 @@ public class OrderExpiryService {
         }
         order.setStatus(OrderStatus.EXPIRED);
         orderRepository.save(order);
+        events.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), true));
         return true;
     }
 

@@ -39,13 +39,16 @@ public class OrderReturnService {
     private final CustomerOrderRepository orderRepository;
     private final StockPostingService postingService;
     private final StockDocumentNoGenerator documentNoGenerator;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public OrderReturnService(CustomerOrderRepository orderRepository,
                                StockPostingService postingService,
-                               StockDocumentNoGenerator documentNoGenerator) {
+                               StockDocumentNoGenerator documentNoGenerator,
+                               org.springframework.context.ApplicationEventPublisher events) {
         this.orderRepository = orderRepository;
         this.postingService = postingService;
         this.documentNoGenerator = documentNoGenerator;
+        this.events = events;
     }
 
     @Transactional
@@ -116,6 +119,7 @@ public class OrderReturnService {
         }
 
         postingService.post(document);
+        events.publishEvent(new com.nbh.backend.common.event.OrderChangedEvent(order.getOrderNo(), true));
         return orderRepository.save(order);
     }
 
