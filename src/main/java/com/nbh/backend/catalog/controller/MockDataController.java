@@ -23,10 +23,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class MockDataController {
 
     private final MockDataSeederService seederService;
+    private final com.nbh.backend.order.service.TestOrderClearService testOrders;
 
-    public MockDataController(MockDataSeederService seederService) {
+    public MockDataController(MockDataSeederService seederService,
+            com.nbh.backend.order.service.TestOrderClearService testOrders) {
         this.seederService = seederService;
+        this.testOrders = testOrders;
     }
+
+    @GetMapping("/test-orders")
+    public java.util.List<com.nbh.backend.order.service.TestOrderClearService.TestOrder> testOrders() {
+        return testOrders.waiting();
+    }
+
+    /** Permanently removes the test orders from before the launch; the word guards against a stray request. */
+    @PostMapping("/test-orders/clear")
+    public com.nbh.backend.order.service.TestOrderClearService.Cleared clearTestOrders(
+            @org.springframework.web.bind.annotation.RequestBody ClearRequest body) {
+        if (!"CLEAR".equals(body.confirm())) throw new IllegalArgumentException("Type CLEAR to confirm");
+        return testOrders.clearAll();
+    }
+
+    public record ClearRequest(String confirm) {}
 
     @GetMapping("/status")
     public MockDataStatusDto status() {

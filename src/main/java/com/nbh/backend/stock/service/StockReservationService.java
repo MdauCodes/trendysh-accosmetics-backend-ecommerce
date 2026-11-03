@@ -124,6 +124,16 @@ public class StockReservationService {
         return reservationRepository.browse(status, pageable);
     }
 
+    /** Releases whatever is still held for one reference, such as an order being cleared. */
+    @Transactional
+    public void releaseActiveFor(String referenceType, UUID referenceId) {
+        for (StockReservation r : reservationRepository.findByReferenceTypeAndReferenceId(referenceType, referenceId)) {
+            if (r.getStatus() == StockReservation.ReservationStatus.ACTIVE) {
+                release(r.getId());
+            }
+        }
+    }
+
     /** Releases (cancels) an active reservation — cart expiry, payment failure. */
     @Transactional
     public void release(UUID reservationId) {
