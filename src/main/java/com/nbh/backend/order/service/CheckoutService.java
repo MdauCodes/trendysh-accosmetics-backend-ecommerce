@@ -82,6 +82,9 @@ public class CheckoutService {
     private com.nbh.backend.delivery.transport.TransportService transport;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.nbh.backend.customer.repository.CustomerAccountRepository customerAccounts;
+    /** Optional for the same reason: campaign deals (V96), so a line sold under one is counted against its cap. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.catalog.service.LiveDeals liveDeals;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CheckoutService.class);
     private final OrderNoGenerator orderNoGenerator;
     private final Clock clock;
@@ -381,6 +384,9 @@ public class CheckoutService {
             orderItem.setQty(cartItem.getQty());
             orderItem.setUnitPrice(cartItem.getUnitPriceSnapshot());
             orderItem.setWholesaleApplied(cartItem.isWholesaleApplied());
+            // Which campaign deal the line was sold under, so the deal's cap counts it (owner, 2026-11-04).
+            orderItem.setFreeUnderDeal(cartItem.isFree());
+            orderItem.setCampaignDealId(cartItem.isFree() ? cartItem.getFreeDealId() : dealIdOf(cartItem));
             orderItem.setVatRate(cartItem.getVariant().getVatRate());
             orderItem.setLineTotal(cartItem.getLineTotal());
             // Null for a package — its own SKU holds no stock, so it gets no reservation; see the
@@ -457,6 +463,19 @@ public class CheckoutService {
      * this number to settle payment and delivery, so a made-up one (found in the 2026-10-06 go-live QA: "12345" and
      * "abc" were accepted) leaves an order nobody can act on, and a delivery with no place to deliver to cannot be sent.
      */
+    /**
+     * The campaign deal a paid line was sold under: a % or amount deal that priced it (not wholesale, which may have won),
+     * or a buy-X-get-Y deal (its paid pieces count toward the cap too); null otherwise.
+     */
+    private java.util.UUID dealIdOf(CartItem cartItem) {
+        if (liveDeals == null || cartItem.getVariant().isPackage() || cartItem.isWholesaleApplied()) return null;
+        com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal = liveDeals.dealFor(cartItem.getVariant());
+        if (deal == null) return null;
+        if (deal.isBuyGet()) return deal.dealId();
+        return cartItem.getUnitPriceSnapshot().compareTo(deal.priceOf(cartItem.getVariant().getSellingPrice())) == 0
+                ? deal.dealId() : null;
+    }
+
     private static void requireUsableContactDetails(CheckoutRequest request) {
         if (!PhoneNumbers.isValidKenyanMobile(request.guestPhone())) {
             throw new IllegalArgumentException("Enter a valid Kenyan mobile number, e.g. 0720 000 111");

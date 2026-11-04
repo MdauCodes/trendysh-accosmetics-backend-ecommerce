@@ -29,4 +29,15 @@ public class ShopSettings extends BaseEntity {
     /** Every option in the shop with no stock number yet can be ordered without a stock limit until it is counted (V78). */
     @Column(name = "sell_without_stock", nullable = false)
     private boolean sellWithoutStock = false;
+
+    /**
+     * Wholesale prices on or off for the whole shop (V96, owner 2026-11-04). Off: no tier is charged or shown, but every
+     * product keeps its tier, so switching back on brings them all back as they were.
+     */
+    @Column(name = "wholesale_on", nullable = false)
+    private boolean wholesaleOn = true;
+
+    /** Who last flipped the wholesale switch; null until someone has. */
+    @Column(name = "wholesale_changed_by", length = 200)
+    private String wholesaleChangedBy;
 }

@@ -53,6 +53,10 @@ public class CartService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.nbh.backend.stock.service.StockShortfallService shortfalls;
 
+    /** Campaign deals (owner, 2026-11-04): which buy-X-get-Y deals give free pieces. Optional for hand-built tests. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.catalog.service.LiveDeals liveDeals;
+
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductVariantRepository variantRepository;
@@ -140,6 +144,7 @@ public class CartService {
         if (cart == null) {
             return; // nothing to price; checkout itself reports a missing or already-converted basket
         }
+        reconcileFreePieces(cart);
         Refreshed refreshed = refreshPrices(cart);
         for (CartItem item : refreshed.items()) {
             if (item.getVariant().getProduct().isMockData()) {
@@ -232,6 +237,7 @@ public class CartService {
         CartItem item = cartItemRepository.findById(itemId)
                 .filter(i -> i.getCart().getId().equals(cart.getId()))
                 .orElseThrow(() -> new EntityNotFoundException("No cart item: " + itemId));
+        requireNotFree(item);
 
         requireSellable(item.getVariant());
         QuantityRules.requireSensible(item.getVariant().getProduct().getName(), item.getVariant(), qty);
@@ -282,8 +288,171 @@ public class CartService {
         CartItem item = cartItemRepository.findById(itemId)
                 .filter(i -> i.getCart().getId().equals(cart.getId()))
                 .orElseThrow(() -> new EntityNotFoundException("No cart item: " + itemId));
+        requireNotFree(item);
         cartItemRepository.delete(item);
         return toDto(cart);
+    }
+
+    /** Free pieces follow what is paid for; the shopper changes their shades instead ({@link #setFreeShades}). */
+    private static void requireNotFree(CartItem item) {
+        if (item.isFree()) {
+            throw new UnprocessableException("Free pieces follow what you buy. Change how many you pay for, or pick other"
+                    + " shades for your free pieces.");
+        }
+    }
+
+    /**
+     * The shopper picks the shades of their free pieces under a buy-X-get-Y deal (owner, 2026-11-04): {@code shades} is
+     * how many of each option of the deal's product, adding up to the free pieces they have now. Each shade must be one
+     * the deal covers and have the stock for it.
+     */
+    @Transactional
+    public CartDto setFreeShades(String sessionId, UUID dealId, Map<UUID, BigDecimal> shades) {
+        Cart cart = findOrCreateCart(sessionId);
+        reconcileFreePieces(cart);
+        List<CartItem> free = cartItemRepository.findByCartId(cart.getId()).stream()
+                .filter(i -> dealId.equals(i.getFreeDealId())).sorted(CartItem.IN_ORDER_ADDED).toList();
+        if (free.isEmpty()) {
+            throw new UnprocessableException("You have no free pieces under that deal any more.");
+        }
+        BigDecimal have = free.stream().map(CartItem::getQty).reduce(BigDecimal.ZERO, BigDecimal::add);
+        Map<UUID, BigDecimal> wanted = new java.util.LinkedHashMap<>();
+        shades.forEach((v, q) -> { if (v != null && q != null && q.signum() > 0) wanted.merge(v, q, BigDecimal::add); });
+        BigDecimal asked = wanted.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (asked.compareTo(have) != 0) {
+            throw new UnprocessableException("Choose shades for exactly " + have.stripTrailingZeros().toPlainString()
+                    + " free pieces.");
+        }
+        UUID productId = free.get(0).getVariant().getProduct().getId();
+        Map<UUID, BigDecimal> paid = new HashMap<>();
+        for (CartItem i : cartItemRepository.findByCartId(cart.getId())) {
+            if (!i.isFree() && !i.getVariant().isPackage()) paid.merge(i.getVariant().getId(), i.getQty(), BigDecimal::add);
+        }
+        Map<UUID, BigDecimal> shelves = availabilityService.available(wanted.keySet());
+        Map<UUID, ProductVariant> chosen = new HashMap<>();
+        for (Map.Entry<UUID, BigDecimal> e : wanted.entrySet()) {
+            ProductVariant v = variantRepository.findById(e.getKey())
+                    .orElseThrow(() -> new EntityNotFoundException("No product variant: " + e.getKey()));
+            if (!v.getProduct().getId().equals(productId) || !isPurchasable(v) || !dealId.equals(dealOf(v))) {
+                throw new UnprocessableException(v.displayLabel() + " isn't one of the shades this deal gives free.");
+            }
+            BigDecimal room = shelves.getOrDefault(v.getId(), BigDecimal.ZERO).subtract(paid.getOrDefault(v.getId(), BigDecimal.ZERO));
+            if (room.compareTo(e.getValue()) < 0) {
+                throw new UnprocessableException(room.signum() <= 0 ? v.displayLabel() + " has none left to give free."
+                        : "Only " + room.stripTrailingZeros().toPlainString() + " of " + v.displayLabel() + " left to give free.");
+            }
+            chosen.put(v.getId(), v);
+        }
+        cartItemRepository.deleteAll(free);
+        cartItemRepository.flush();
+        for (Map.Entry<UUID, BigDecimal> e : wanted.entrySet()) {
+            saveFreeLine(cart, chosen.get(e.getKey()), dealId, e.getValue());
+        }
+        return toDto(cart);
+    }
+
+    /**
+     * Brings the basket's free pieces into line with what is paid for, under every live buy-X-get-Y deal (owner,
+     * 2026-11-04), and takes away free pieces whose deal has ended or no longer applies. See {@link FreePieces} for how
+     * many and which shades. Returns what was added, so the shop can say so.
+     */
+    private List<com.nbh.backend.cart.dto.CartDto.FreeAdded> reconcileFreePieces(Cart cart) {
+        List<com.nbh.backend.cart.dto.CartDto.FreeAdded> added = new java.util.ArrayList<>();
+        List<CartItem> lines = cartItemRepository.findByCartId(cart.getId()).stream().sorted(CartItem.IN_ORDER_ADDED).toList();
+        if (lines.isEmpty() || (liveDeals == null && lines.stream().noneMatch(CartItem::isFree))) {
+            return added;
+        }
+        // The live buy-X-get-Y deal of each paid line, and the paid pieces under each deal by option.
+        Map<UUID, com.nbh.backend.catalog.service.LiveDeals.LiveDeal> dealById = new HashMap<>();
+        Map<UUID, Map<UUID, BigDecimal>> paidByDeal = new HashMap<>();
+        Map<UUID, ProductVariant> sampleOf = new HashMap<>();
+        for (CartItem line : lines) {
+            if (line.isFree() || line.getVariant().isPackage() || liveDeals == null || !isPurchasable(line.getVariant())) continue;
+            com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal = liveDeals.dealFor(line.getVariant());
+            if (deal == null || !deal.isBuyGet()) continue;
+            dealById.put(deal.dealId(), deal);
+            sampleOf.putIfAbsent(deal.dealId(), line.getVariant());
+            paidByDeal.computeIfAbsent(deal.dealId(), k -> new java.util.LinkedHashMap<>())
+                    .merge(line.getVariant().getId(), line.getQty(), BigDecimal::add);
+        }
+        // Free lines whose deal no longer gives this basket anything go.
+        Map<UUID, List<CartItem>> freeByDeal = new HashMap<>();
+        boolean removed = false;
+        for (CartItem line : lines) {
+            if (!line.isFree()) continue;
+            if (!dealById.containsKey(line.getFreeDealId())) {
+                cartItemRepository.delete(line);
+                removed = true;
+                continue;
+            }
+            freeByDeal.computeIfAbsent(line.getFreeDealId(), k -> new java.util.ArrayList<>()).add(line);
+        }
+        if (removed) cartItemRepository.flush();
+        for (com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal : dealById.values()) {
+            Map<UUID, BigDecimal> paid = paidByDeal.getOrDefault(deal.dealId(), Map.of());
+            List<CartItem> freeLines = freeByDeal.getOrDefault(deal.dealId(), List.of());
+            Map<UUID, BigDecimal> freeNow = new java.util.LinkedHashMap<>();
+            freeLines.forEach(l -> freeNow.merge(l.getVariant().getId(), l.getQty(), BigDecimal::add));
+            // The options this deal covers that can be sold, in the order they are offered.
+            ProductVariant sample = sampleOf.get(deal.dealId());
+            List<ProductVariant> options = variantRepository
+                    .findByProductIdAndDeletedFalseAndIsActiveTrueAndSellingPriceIsNotNullOrderBySortOrderAsc(sample.getProduct().getId())
+                    .stream().filter(CartService::isPurchasable).filter(v -> deal.dealId().equals(dealOf(v))).toList();
+            Map<UUID, BigDecimal> offered = new java.util.LinkedHashMap<>();
+            options.forEach(v -> offered.put(v.getId(), paid.getOrDefault(v.getId(), BigDecimal.ZERO)));
+            Map<UUID, BigDecimal> shelves = availabilityService.available(offered.keySet());
+            Map<UUID, BigDecimal> plan = FreePieces.plan(deal.buyQty(), deal.freeQty(), offered, freeNow, shelves);
+            if (samePieces(plan, freeNow)) continue;
+            BigDecimal before = FreePieces.sum(freeNow);
+            BigDecimal after = FreePieces.sum(plan);
+            Map<UUID, ProductVariant> optionById = new HashMap<>();
+            options.forEach(v -> optionById.put(v.getId(), v));
+            for (CartItem l : freeLines) {
+                if (!plan.containsKey(l.getVariant().getId())) cartItemRepository.delete(l);
+            }
+            cartItemRepository.flush();
+            for (Map.Entry<UUID, BigDecimal> p : plan.entrySet()) {
+                CartItem existing = freeLines.stream().filter(l -> l.getVariant().getId().equals(p.getKey())).findFirst().orElse(null);
+                if (existing != null) {
+                    if (existing.getQty().compareTo(p.getValue()) != 0) {
+                        existing.setQty(p.getValue());
+                        cartItemRepository.save(existing);
+                    }
+                } else {
+                    saveFreeLine(cart, optionById.get(p.getKey()), deal.dealId(), p.getValue());
+                }
+            }
+            if (after.compareTo(before) > 0) {
+                added.add(new com.nbh.backend.cart.dto.CartDto.FreeAdded(deal.dealId(), sample.getProduct().getName(), after.subtract(before), deal.campaignTitle()));
+            }
+        }
+        return added;
+    }
+
+    /** The same pieces of the same options (quantities compared by value, not by how they are written). */
+    private static boolean samePieces(Map<UUID, BigDecimal> a, Map<UUID, BigDecimal> b) {
+        if (!a.keySet().equals(b.keySet())) return false;
+        return a.entrySet().stream().allMatch(e -> e.getValue().compareTo(b.get(e.getKey())) == 0);
+    }
+
+    /** The id of the live campaign deal an option is on, or null. */
+    private UUID dealOf(ProductVariant v) {
+        com.nbh.backend.catalog.service.LiveDeals.LiveDeal d = liveDeals == null ? null : liveDeals.dealFor(v);
+        return d == null ? null : d.dealId();
+    }
+
+    private void saveFreeLine(Cart cart, ProductVariant variant, UUID dealId, BigDecimal qty) {
+        CartItem line = new CartItem();
+        line.setCart(cart);
+        line.setVariant(variant);
+        line.setQty(qty);
+        line.setUnitPriceSnapshot(BigDecimal.ZERO);
+        line.setFreeDealId(dealId);
+        line.setChoiceKey(CartItem.freeKey(dealId));
+        line.setProductNameSnapshot(variant.getProduct().getName());
+        line.setVariantNameSnapshot(variant.getVariantName());
+        line.setAddedAt(java.time.Instant.now());
+        cartItemRepository.save(line);
     }
 
     private Cart findOrCreateCart(String sessionId) {
@@ -411,6 +580,7 @@ public class CartService {
      * (or a price an admin had corrected) was still charged for as long as the item sat in a basket.
      */
     private CartDto toDto(Cart cart) {
+        List<com.nbh.backend.cart.dto.CartDto.FreeAdded> freeAdded = reconcileFreePieces(cart);
         Refreshed refreshed = refreshPrices(cart);
         // What is inside each package line, with the shopper's picks applied (empty for every other line), and the lines whose
         // picks no longer apply (they are shown as unavailable, like a product that has been taken off sale).
@@ -438,13 +608,16 @@ public class CartService {
                     boolean available = isPurchasable(item.getVariant())
                             && !outOfDate.contains(item.getId())
                             && parts.stream().allMatch(PackageService.SelectedPart::available);
+                    com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal = liveDeals == null || item.getVariant().isPackage() ? null : liveDeals.dealFor(item.getVariant());
+                    boolean wholesaleShown = priceResolver.wholesaleOn() && (deal == null || deal.wholesaleApplies());
                     return CartItemDto.from(item, available,
                             stockLeft.getOrDefault(item.getId(), BigDecimal.ZERO),
                             refreshed.changedFrom().get(item.getId()), packagePartDtos(parts, covers),
-                            item.getVariant().isPackage() ? covers.get(item.getVariant().getId()) : null);
+                            item.getVariant().isPackage() ? covers.get(item.getVariant().getId()) : null,
+                            wholesaleShown, deal);
                 })
                 .toList();
-        return CartDto.from(cart, items);
+        return CartDto.from(cart, items, freeAdded);
     }
 
     private static List<PackagePartDto> packagePartDtos(List<PackageService.SelectedPart> parts, Map<UUID, String> covers) {
@@ -549,6 +722,10 @@ public class CartService {
      */
     private EffectivePriceResolver.EffectivePrice currentPrice(CartItem item, PromoCampaign campaign) {
         ProductVariant variant = item.getVariant();
+        if (item.isFree()) {
+            return new EffectivePriceResolver.EffectivePrice(BigDecimal.ZERO, BigDecimal.ZERO, null,
+                    EffectivePriceResolver.Source.NONE);
+        }
         if (!isPurchasable(variant)) {
             return new EffectivePriceResolver.EffectivePrice(item.getUnitPriceSnapshot(), item.getUnitPriceSnapshot(),
                     null, EffectivePriceResolver.Source.NONE);

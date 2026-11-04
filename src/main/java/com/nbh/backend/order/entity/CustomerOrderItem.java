@@ -66,6 +66,14 @@ public class CustomerOrderItem {
     @Column(name = "wholesale_applied", nullable = false)
     private boolean wholesaleApplied = false;
 
+    /** The campaign deal that priced this line, or null (V96): how a deal's cap ("first 20 pieces") is counted. */
+    @Column(name = "campaign_deal_id")
+    private java.util.UUID campaignDealId;
+
+    /** A piece the shop gave free under a buy-X-get-Y deal (V96): its price is nil. */
+    @Column(name = "free_under_deal", nullable = false)
+    private boolean freeUnderDeal = false;
+
     /** Filled in at fulfilment time from the stock ledger's outbound entry — the real margin figure. */
     // Phase 0 fix (2026-09-27), D7: was scale 2, silently truncating the 4dp moving-average
     // cost this is sourced from (see StockLedgerEntry.unitCost's comment).

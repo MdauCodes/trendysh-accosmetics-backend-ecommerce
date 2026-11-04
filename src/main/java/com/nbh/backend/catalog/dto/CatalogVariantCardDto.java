@@ -95,7 +95,13 @@ public record CatalogVariantCardDto(
          * When the product or this option was last changed, whichever is later: the "last modified" date the shop's
          * sitemap gives search engines, so a page is marked changed only when it was (owner, 2026-11-01: SEO).
          */
-        Instant updatedAt
+        Instant updatedAt,
+        /**
+         * The campaign deal this option is on (owner, 2026-11-04), or null: what kind ({@code type} PERCENT, AMOUNT or
+         * BUY_GET), the campaign's name and page, when it ends (null: while stock lasts) and, only when it is a handful
+         * or fewer, how many are left at the deal. For % and amount deals {@code price} above is already the deal price.
+         */
+        com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal
 ) {
     /** True for a variant name that adds no information beyond the product name itself. */
     public static boolean isMeaninglessName(String variantName) {

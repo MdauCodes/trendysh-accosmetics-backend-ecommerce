@@ -5,6 +5,8 @@ import com.nbh.backend.payment.service.BankPaymentSettings;
 import com.nbh.backend.shop.ShopModeDtos.ShopModeAdminDto;
 import com.nbh.backend.shop.ShopModeDtos.ShopModeDto;
 import com.nbh.backend.shop.ShopModeDtos.SetShopModeRequest;
+import com.nbh.backend.shop.ShopModeDtos.SetWholesaleRequest;
+import com.nbh.backend.shop.ShopModeDtos.WholesaleSwitchDto;
 import com.nbh.backend.staff.entity.StaffUser;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -33,7 +35,8 @@ public class ShopModeController {
 
     @GetMapping("/api/v1/catalog/shop-mode")
     public ShopModeDto publicMode() {
-        return new ShopModeDto(settings.get().getOrderingMode(), supportWhatsapp());
+        ShopSettings row = settings.get();
+        return new ShopModeDto(row.getOrderingMode(), supportWhatsapp(), row.isWholesaleOn());
     }
 
     /** Every visit asks this: a payment settings row that is not seeded yet must not stop the storefront learning the mode. */
@@ -55,5 +58,19 @@ public class ShopModeController {
     @PutMapping("/api/v1/admin/shop-mode")
     public ShopModeAdminDto change(@Valid @RequestBody SetShopModeRequest request, @AuthenticationPrincipal StaffUser staff) {
         return ShopModeAdminDto.from(settings.setOrderingMode(request.orderingMode(), staff.getFullName()));
+    }
+
+    /** The wholesale switch (owner, 2026-11-04): whoever may change prices may turn wholesale off or on. */
+    @PreAuthorize("hasAuthority('PERM_PRODUCT_MANAGE')")
+    @GetMapping("/api/v1/admin/wholesale")
+    public WholesaleSwitchDto wholesale() {
+        return WholesaleSwitchDto.from(settings.get());
+    }
+
+    @PreAuthorize("hasAuthority('PERM_PRODUCT_MANAGE')")
+    @PutMapping("/api/v1/admin/wholesale")
+    public WholesaleSwitchDto setWholesale(@Valid @RequestBody SetWholesaleRequest request,
+                                           @AuthenticationPrincipal StaffUser staff) {
+        return WholesaleSwitchDto.from(settings.setWholesaleOn(request.wholesaleOn(), staff.getFullName()));
     }
 }

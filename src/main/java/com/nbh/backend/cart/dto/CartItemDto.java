@@ -49,7 +49,11 @@ public record CartItemDto(
         String swatchHex,
         List<PackagePartDto> packageItems,
         java.util.Map<UUID, UUID> packageChoices,
-        String imageUrl
+        String imageUrl,
+        /** Set when the shop added this line free under a buy-X-get-Y deal: its price is nil and it can't be changed here. */
+        UUID freeDealId,
+        /** The campaign deal the line is on (a paid line at a deal, or a free one), or null (owner, 2026-11-04). */
+        com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal
 ) {
     public static CartItemDto from(CartItem item) {
         return from(item, true, null, null);
@@ -62,6 +66,16 @@ public record CartItemDto(
 
     public static CartItemDto from(CartItem item, boolean available, BigDecimal stockLeft,
                                    BigDecimal previousUnitPrice, List<PackagePartDto> packageItems, String imageUrl) {
+        return from(item, available, stockLeft, previousUnitPrice, packageItems, imageUrl, true, null);
+    }
+
+    /**
+     * {@code wholesaleShown}: false while the shop's wholesale switch is off, or the line's campaign deal rules wholesale
+     * out; the tier is then left off the line so the basket never offers it.
+     */
+    public static CartItemDto from(CartItem item, boolean available, BigDecimal stockLeft,
+                                   BigDecimal previousUnitPrice, List<PackagePartDto> packageItems, String imageUrl,
+                                   boolean wholesaleShown, com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal) {
         return new CartItemDto(
                 item.getId(), item.getVariant().getId(),
                 item.getVariant().getProduct().getId(), item.getVariant().getProduct().getSlug(),
@@ -69,8 +83,10 @@ public record CartItemDto(
                 item.getProductNameSnapshot(), item.getVariantNameSnapshot(),
                 item.getQty(), item.getUnitPriceSnapshot(), item.getLineTotal(),
                 available, stockLeft, previousUnitPrice, item.isWholesaleApplied(),
-                item.getVariant().getWholesaleMinQty(), item.getVariant().getWholesalePrice(),
+                wholesaleShown && !item.isFree() ? item.getVariant().getWholesaleMinQty() : null,
+                wholesaleShown && !item.isFree() ? item.getVariant().getWholesalePrice() : null,
                 item.getVariant().shortOption(), item.getVariant().getOptionColor(), item.getVariant().getOptionSize(),
-                item.getVariant().getSwatchHex(), packageItems, new java.util.HashMap<>(item.getChoices()), imageUrl);
+                item.getVariant().getSwatchHex(), packageItems, new java.util.HashMap<>(item.getChoices()), imageUrl,
+                item.getFreeDealId(), deal);
     }
 }

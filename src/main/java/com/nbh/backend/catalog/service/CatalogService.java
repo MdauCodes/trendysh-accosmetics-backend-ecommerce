@@ -247,7 +247,9 @@ public class CatalogService {
                 rating != null ? rating.getAvgRating() : 0.0, rating != null ? rating.getReviewCount() : 0L,
                 soldByVariant.getOrDefault(v.getId(), BigDecimal.ZERO),
                 availableQty, v.getSku(), p.getDescription(),
-                (int) Math.max(0, sellableCount - 1), v.getWholesaleMinQty(), v.getWholesalePrice(),
+                (int) Math.max(0, sellableCount - 1),
+                // The wholesale switch is off, or the campaign this option is on says wholesale does not apply: no tier shown.
+                wholesaleShown(price) ? v.getWholesaleMinQty() : null, wholesaleShown(price) ? v.getWholesalePrice() : null,
                 p.getShortDescription(), optionLabel, v.getSwatchHex(),
                 v.getOptionColor(), v.getOptionSize(),
                 v.effectiveColorFamily() == null ? null : v.effectiveColorFamily().name(),
@@ -256,7 +258,12 @@ public class CatalogService {
                 // A deal picture staff chose, only while the product's own flash deal is live (not a site-wide campaign).
                 price.source() == EffectivePriceResolver.Source.PRODUCT_DEAL ? dealPhotoByVariant.get(v.getId()) : null,
                 recentByVariant.getOrDefault(v.getId(), BigDecimal.ZERO),
-                later(p.getUpdatedAt(), v.getUpdatedAt()));
+                later(p.getUpdatedAt(), v.getUpdatedAt()), price.deal());
+    }
+
+    /** Whether a card shows its wholesale tier: the shop's switch is on and no campaign deal rules it out. */
+    private boolean wholesaleShown(EffectivePriceResolver.EffectivePrice price) {
+        return priceResolver.wholesaleOn() && (price.deal() == null || price.deal().wholesaleApplies());
     }
 
     /** The later of two moments, either of which may be missing. */

@@ -13,9 +13,28 @@ import java.util.UUID;
 public class PromoBannerController {
 
     private final PromoBannerService banners;
+    private final CampaignDealService campaigns;
 
-    public PromoBannerController(PromoBannerService banners) {
+    public PromoBannerController(PromoBannerService banners, CampaignDealService campaigns) {
         this.banners = banners;
+        this.campaigns = campaigns;
+    }
+
+    /** Public: one live campaign by its page address, for /deals/{slug}; 404 when it is not live. */
+    @GetMapping("/api/v1/catalog/campaigns/{slug}")
+    public PromoBannerService.PublicView campaign(@PathVariable String slug) {
+        PromoBannerService.PublicView view = banners.liveBySlug(slug);
+        if (view == null) throw new com.nbh.backend.common.exception.NotFoundException("That campaign isn't on now.");
+        return view;
+    }
+
+    /** A campaign's own settings and its deals (owner, 2026-11-04), saved together; the banner goes back to a draft. */
+    @PreAuthorize("hasAuthority('PERM_PRODUCT_MANAGE')")
+    @PutMapping("/api/v1/admin/promo-banners/{id}/campaign")
+    public PromoBannerService.AdminView saveCampaign(@PathVariable UUID id,
+                                                     @RequestBody CampaignDealService.CampaignEdit in) {
+        campaigns.save(id, in);
+        return banners.get(id);
     }
 
     /** Public: the live hero, strip and tile banners, in order. */

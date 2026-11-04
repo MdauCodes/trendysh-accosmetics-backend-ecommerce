@@ -73,6 +73,24 @@ public class CartItem extends BaseEntity {
     @Column(name = "choice_key", nullable = false, length = 64)
     private String choiceKey = "";
 
+    /**
+     * Set on a line the shop added FREE under a buy-X-get-Y campaign deal (V96, owner 2026-11-04): its price is nil and its
+     * quantity follows what the shopper pays for; its {@link #choiceKey} is "free:" + the deal, so it never merges with the
+     * paid line of the same option. Null for every line the shopper put in.
+     */
+    @Column(name = "free_deal_id")
+    private UUID freeDealId;
+
+    /** The {@link #choiceKey} of a free line under this deal. */
+    public static String freeKey(UUID dealId) {
+        return "free:" + dealId;
+    }
+
+    @Transient
+    public boolean isFree() {
+        return freeDealId != null;
+    }
+
     @Transient
     public BigDecimal getLineTotal() {
         return unitPriceSnapshot.multiply(qty);

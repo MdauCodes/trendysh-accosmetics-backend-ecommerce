@@ -43,6 +43,9 @@ public class PromoBannerService {
     /** Set by Spring; tests and hand-built instances may leave it out. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.nbh.backend.imagecleanup.GeminiTextClient text;
+    /** The campaign side of each banner (V96): its deals. Set by Spring; hand-built instances may leave it out. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CampaignDealService campaigns;
     private final EntityManager em;
     private final TransactionTemplate tx;
     private final ApplicationEventPublisher events;
@@ -84,13 +87,13 @@ public class PromoBannerService {
                             String imageUrl, int focusX, int focusY, Instant startsAt, Instant endsAt, int sortOrder,
                             String status, String state, List<ProductCard> products, List<PictureView> pictures,
                             List<String> missing, String createdBy, String approvedBy, Instant approvedAt,
-                            Instant updatedAt, Style style) {}
+                            Instant updatedAt, Style style, CampaignDealService.CampaignAdmin campaign) {}
 
     /** What the shop draws. */
     public record PublicView(UUID id, String placement, UUID categoryId, String categorySlug, Link link,
                              String headline, String subline, String ctaLabel, String offer, Instant countdownEndsAt,
                              Theme theme, String textTone, String imageUrl, int focusX, int focusY,
-                             List<ProductCard> products, Style style) {}
+                             List<ProductCard> products, Style style, CampaignDealService.CampaignPublic campaign) {}
 
     public record NewBanner(String name, String placement) {}
 
@@ -216,8 +219,10 @@ public class PromoBannerService {
     public AdminView approve(UUID id, String staff) {
         tx.executeWithoutResult(s -> {
             PromoBanner b = find(id);
-            List<String> missing = missing(b, products(List.of(b.getId())).getOrDefault(b.getId(), List.of()));
+            List<String> missing = missing(b, products(List.of(b.getId())).getOrDefault(b.getId(), List.of()),
+                    campaigns != null && campaigns.hasAnyDeal(b.getId()));
             if (!missing.isEmpty()) throw new UnprocessableException("Not ready to approve: " + String.join("; ", missing));
+            if (campaigns != null) campaigns.requireNoClash(b);
             b.setStatus(PromoBanner.Status.APPROVED);
             b.setApprovedBy(staff);
             b.setApprovedAt(clock.instant());
@@ -282,8 +287,12 @@ public class PromoBannerService {
             b.setFocusY(from.getFocusY());
             b.setSortOrder(from.getSortOrder());
             b.setStyle(from.getStyle());
+            b.setTitle(from.getTitle());
+            b.setShowAs(from.getShowAs());
+            b.setWholesaleApplies(from.isWholesaleApplies());
             b.setCreatedBy(staff);
             UUID newId = banners.save(b).getId();
+            if (campaigns != null) campaigns.copyDeals(id, newId);
             setProducts(newId, products(List.of(id)).getOrDefault(id, List.of()).stream().map(ProductCard::variantId).toList());
             if (from.getImageUrl() != null) {
                 PromoBannerPicture p = new PromoBannerPicture();
@@ -488,8 +497,25 @@ public class PromoBannerService {
         return publicViews(on);
     }
 
-    private List<PublicView> publicViews(List<PromoBanner> on) {
+    /**
+     * One live campaign by its page address (/deals/{slug}), whatever place its banner shows in; null when there is none
+     * live by that name (ended, paused, or every deal sold out).
+     */
+    public PublicView liveBySlug(String slug) {
+        return tx.execute(s -> {
+            Instant now = clock.instant();
+            List<PromoBanner> on = banners.findLive(now).stream().filter(b -> slug.equals(b.getSlug())).toList();
+            List<PublicView> views = publicViews(on);
+            return views.isEmpty() ? null : views.get(0);
+        });
+    }
+
+    private List<PublicView> publicViews(List<PromoBanner> all) {
+        // A campaign that has deals shows only while one of them is live: a "while stock lasts" one ends itself.
+        List<PromoBanner> on = campaigns == null ? all
+                : all.stream().filter(b -> !campaigns.hasDeals(b.getId()) || campaigns.hasLiveDeal(b.getId())).toList();
         if (on.isEmpty()) return List.of();
+        Map<UUID, CampaignDealService.CampaignPublic> sides = campaigns == null ? Map.of() : campaigns.forShop(on);
         Context c = context();
         Map<UUID, List<ProductCard>> featured = products(on.stream().map(PromoBanner::getId).toList());
         return on.stream().map(b -> {
@@ -497,7 +523,7 @@ public class PromoBannerService {
             return new PublicView(b.getId(), b.getPlacement().name(), b.getCategoryId(),
                     c.slugs().get(b.getCategoryId()), link(b, c), b.getHeadline(), b.getSubline(), b.getCtaLabel(),
                     offer(b, cards), countdown(b, cards), theme(b, c), b.getTextTone(), b.getImageUrl(), b.getFocusX(),
-                    b.getFocusY(), cards, readStyle(b.getStyle()));
+                    b.getFocusY(), cards, readStyle(b.getStyle()), sides.get(b.getId()));
         }).toList();
     }
 
@@ -532,8 +558,10 @@ public class PromoBannerService {
                 c.categoryNames().get(b.getCategoryId()), link(b, c), b.getHeadline(), b.getSubline(), b.getCtaLabel(),
                 b.getOfferMode().name(), b.getOfferText(), offer(b, cards), b.isShowCountdown(), countdown(b, cards),
                 theme(b, c), b.getTextTone(), b.getImageUrl(), b.getFocusX(), b.getFocusY(), b.getStartsAt(),
-                b.getEndsAt(), b.getSortOrder(), b.getStatus().name(), state(b, c.now()), cards, pics, missing(b, cards),
-                b.getCreatedBy(), b.getApprovedBy(), b.getApprovedAt(), b.getUpdatedAt(), readStyle(b.getStyle()));
+                b.getEndsAt(), b.getSortOrder(), b.getStatus().name(), state(b, c.now()), cards, pics,
+                missing(b, cards, campaigns != null && campaigns.hasAnyDeal(b.getId())),
+                b.getCreatedBy(), b.getApprovedBy(), b.getApprovedAt(), b.getUpdatedAt(), readStyle(b.getStyle()),
+                campaigns == null ? null : campaigns.forStaff(b));
     }
 
     static String state(PromoBanner b, Instant now) {
@@ -547,6 +575,11 @@ public class PromoBannerService {
 
     /** What a customer would miss, in staff's words; empty when it can be approved. */
     static List<String> missing(PromoBanner b, List<ProductCard> products) {
+        return missing(b, products, false);
+    }
+
+    /** {@code hasDeals}: a campaign's deals are its cards and its offer, so it needs no featured products. */
+    static List<String> missing(PromoBanner b, List<ProductCard> products, boolean hasDeals) {
         List<String> out = new ArrayList<>();
         if (b.getImageUrl() == null) out.add("choose a picture");
         boolean circle = b.getPlacement() == PromoBanner.Placement.CIRCLE;
@@ -557,9 +590,11 @@ public class PromoBannerService {
         if (b.getOfferMode() == PromoBanner.OfferMode.CUSTOM && (b.getOfferText() == null || b.getOfferText().isBlank())) {
             out.add("write the offer, or set the offer to automatic or none");
         }
-        if (b.getStartsAt() == null || b.getEndsAt() == null) out.add("give it a start and an end");
-        else if (!b.getEndsAt().isAfter(b.getStartsAt())) out.add("make it end after it starts");
-        if (b.getPlacement() == PromoBanner.Placement.HERO && products.isEmpty() && b.getOfferMode() == PromoBanner.OfferMode.AUTO) {
+        // No end is allowed (V96): the campaign runs while stock lasts, and a banner without deals until it is ended.
+        if (b.getStartsAt() == null) out.add("give it a start");
+        else if (b.getEndsAt() != null && !b.getEndsAt().isAfter(b.getStartsAt())) out.add("make it end after it starts");
+        if (b.getPlacement() == PromoBanner.Placement.HERO && products.isEmpty() && !hasDeals
+                && b.getOfferMode() == PromoBanner.OfferMode.AUTO) {
             out.add("add a featured product (or set the offer to your own words or none)");
         }
         return out;

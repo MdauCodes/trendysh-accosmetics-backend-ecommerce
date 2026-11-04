@@ -120,4 +120,22 @@ public class PromoBanner extends BaseEntity {
 
     @Column(name = "approved_at")
     private Instant approvedAt;
+
+    // ---- the campaign side (V96, owner 2026-11-04): a banner is a campaign, and its deals (CampaignDeal) its cards
+
+    /** The campaign's name as customers see it ("Weekend Beauty Challenge"); null = the banner's own name. */
+    @Column(length = 60)
+    private String title;
+
+    /** Its page, /deals/{slug}. */
+    @Column(length = 80)
+    private String slug;
+
+    /** How its cards show: PRODUCTS, CATEGORIES, or AUTO (the shop chooses by how many categories the deals span). */
+    @Column(name = "show_as", nullable = false, length = 10)
+    private String showAs = "AUTO";
+
+    /** Whether a deal product's wholesale price still applies while the campaign runs (the cheaper of the two). */
+    @Column(name = "wholesale_applies", nullable = false)
+    private boolean wholesaleApplies;
 }

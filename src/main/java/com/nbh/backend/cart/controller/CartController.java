@@ -60,6 +60,16 @@ public class CartController {
         return cartService.removeItem(resolved, itemId);
     }
 
+    /** The shades of the free pieces under a buy-X-get-Y deal: option id to how many (owner, 2026-11-04). */
+    @PutMapping("/free/{dealId}")
+    public CartDto setFreeShades(@RequestHeader(value = SESSION_HEADER, required = false) String sessionId,
+                                  @PathVariable UUID dealId,
+                                  @RequestBody java.util.Map<UUID, java.math.BigDecimal> shades,
+                                  HttpServletResponse response) {
+        String resolved = resolveSession(sessionId, response);
+        return cartService.setFreeShades(resolved, dealId, shades);
+    }
+
     private String resolveSession(String sessionId, HttpServletResponse response) {
         if (sessionId != null && !sessionId.isBlank()) {
             return sessionId;
