@@ -142,4 +142,8 @@ public class PromoBanner extends BaseEntity {
     /** The owner's pose the banner shows (an approved OwnerPose), or null for the banner's own picture only. */
     @Column(name = "pose_id")
     private UUID poseId;
+
+    /** How staff arranged this campaign banner, as JSON (CampaignDealService.Arrangement); empty: the usual way (V97). */
+    @Column(name = "arrangement", columnDefinition = "TEXT")
+    private String arrangement;
 }

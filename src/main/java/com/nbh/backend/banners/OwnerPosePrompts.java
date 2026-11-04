@@ -150,6 +150,11 @@ final class OwnerPosePrompts {
     }
 
     static String backdrop(String hex) {
+        if (PoseCutout.SCREEN_HEX.equals(hex)) {
+            return "Background: a professional chroma-key green screen, exactly " + hex + ", evenly lit and the same from edge"
+                    + " to edge, with no gradient, vignette, floor line or shadow on it. No green light falls on her; nothing"
+                    + " she wears is green. Keep clean, crisp edges around her hair and hands so she can be cut out. ";
+        }
         return "Background: a seamless, perfectly flat studio colour, exactly " + hex + ", the same from edge to edge, with no"
                 + " gradient, vignette, texture, floor line or shadow on it. ";
     }

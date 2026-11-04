@@ -63,6 +63,10 @@ public class OwnerPose extends BaseEntity {
     @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
+    /** Her alone on a transparent background (V97); empty on older poses, which blend into their own backdrop. */
+    @Column(name = "cutout_url", columnDefinition = "TEXT")
+    private String cutoutUrl;
+
     private Integer width;
 
     private Integer height;

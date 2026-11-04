@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -46,10 +47,6 @@ public class OwnerPoseService {
     static final int MAX_REFERENCES = 3;
     /** Poses one request may make. */
     static final int MAX_PER_REQUEST = OwnerPosePrompts.VARIANTS;
-    /** How far (in RGB) an edge pixel may be from the backdrop asked for, and how much of the edge must be that close. */
-    static final int BACKDROP_TOLERANCE = 45;
-    static final double BACKDROP_ENOUGH = 0.75;
-
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final OwnerPhotoRepository photos;
@@ -99,7 +96,7 @@ public class OwnerPoseService {
     public record PhotoView(UUID id, String imageUrl, String note) {}
 
     public record PoseView(UUID id, String mood, String framing, String side, String outfit, String backdropHex,
-                           String edgeHex, String status, String imageUrl, Integer width, Integer height, Layout layout,
+                           String edgeHex, String status, String imageUrl, String cutoutUrl, Integer width, Integer height, Layout layout,
                            String note, String model, String createdBy, String approvedBy, java.time.Instant createdAt) {}
 
     /** The library: the reference photos and every pose, newest first. */
@@ -154,7 +151,8 @@ public class OwnerPoseService {
                 p.setFraming(enumOf(OwnerPose.Framing.class, in.framing(), OwnerPose.Framing.KNEE));
                 p.setSide(enumOf(OwnerPose.Side.class, in.side(), OwnerPose.Side.LEFT));
                 p.setOutfit(enumOf(OwnerPose.Outfit.class, in.outfit(), OwnerPose.Outfit.PINK_BLOUSE));
-                p.setBackdropHex(hex(in.backdropHex()));
+                // Always the green screen now: she is cut out of it, and the banner chooses its own colour.
+                p.setBackdropHex(PoseCutout.SCREEN_HEX);
                 p.setStatus(OwnerPose.Status.MAKING);
                 p.setBrief(in.note() == null || in.note().isBlank() ? null : in.note().strip());
                 p.setModel(config.getPoseModel());
@@ -190,32 +188,32 @@ public class OwnerPoseService {
             if (refs.isEmpty()) throw new UnprocessableException("There is no photo of the owner to start from.");
             OwnerPose p = job.pose();
             String prompt = OwnerPosePrompts.prompt(p, p.getBrief(), variant);
-            Image picture = paint(p, refs, prompt);
-            double onBackdrop = backdropMatch(picture, p.getBackdropHex());
-            if (onBackdrop < BACKDROP_ENOUGH) {
-                // Shelves from the reference photos, or the wrong colour: one more try, keeping whichever came closer.
-                Image again = paint(p, refs, prompt + OwnerPosePrompts.backdropAgain(p.getBackdropHex()));
-                double second = backdropMatch(again, p.getBackdropHex());
-                if (second > onBackdrop) {
-                    picture = again;
-                    onBackdrop = second;
-                }
+            Image chosen = paint(p, refs, prompt);
+            Optional<byte[]> alone = PoseCutout.cut(chosen.bytes());
+            if (alone.isEmpty()) {
+                // Shelves from the reference photos, or an uneven screen: one more try, then say so.
+                chosen = paint(p, refs, prompt + OwnerPosePrompts.backdropAgain(p.getBackdropHex()));
+                alone = PoseCutout.cut(chosen.bytes());
             }
-            boolean backdropOff = onBackdrop < BACKDROP_ENOUGH;
-            Image chosen = picture;
+            if (alone.isEmpty()) {
+                fail(poseId, "Her green screen didn't come out clean enough to cut her out. Try again.");
+                return;
+            }
             Measured m = measure(chosen);
             Layout layout = layout(p, chosen);
             String url = cloudinary.upload(chosen.bytes(), "owner-poses",
                     "pose-" + p.getMood().name().toLowerCase(Locale.ROOT) + "-" + clock.millis()).url();
+            String cutout = cloudinary.upload(alone.get(), "owner-poses",
+                    "cutout-" + p.getMood().name().toLowerCase(Locale.ROOT) + "-" + clock.millis()).url();
             tx.executeWithoutResult(s -> poses.findById(poseId).ifPresent(x -> {
                 x.setStatus(OwnerPose.Status.READY);
                 x.setImageUrl(url);
+                x.setCutoutUrl(cutout);
                 x.setWidth(m.width());
                 x.setHeight(m.height());
-                x.setEdgeHex(m.edgeHex());
+                x.setEdgeHex(null); // the banner has its own colour, not her backdrop's
                 x.setLayout(write(layout));
-                x.setNote(backdropOff ? "The backdrop came out a different shade than asked; the banner takes the shade it got."
-                        : layout.measured() ? null : "Her face and hands couldn't be measured; the usual places are assumed.");
+                x.setNote(layout.measured() ? null : "Her face and hands couldn't be measured; the usual places are assumed.");
             }));
         } catch (GeminiException e) {
             fail(poseId, e.isQuotaExceeded() ? "Gemini's limit for now is used up. Try again later." : e.getMessage());
@@ -321,36 +319,6 @@ public class OwnerPoseService {
         }
     }
 
-    /**
-     * How much of the picture's top and side edges is the colour asked for, 0 to 1 (1 when it can't be read, so a
-     * picture is never made twice over that). A sleeve or hand may touch an edge; shelves or a grey wall fill it.
-     */
-    static double backdropMatch(Image picture, String hex) {
-        try {
-            BufferedImage img = ImageIO.read(new ByteArrayInputStream(picture.bytes()));
-            if (img == null || hex == null) return 1;
-            int want = Integer.parseInt(hex.substring(1), 16);
-            int w = img.getWidth(), h = img.getHeight();
-            int band = Math.max(2, Math.min(w, h) / 40);
-            int step = Math.max(1, Math.min(w, h) / 200);
-            long close = 0, all = 0;
-            for (int y = 0; y < h; y += step) {
-                for (int x = 0; x < w; x += step) {
-                    if (y >= band && x >= band && x < w - band) continue;
-                    int rgb = img.getRGB(x, y);
-                    int dr = ((rgb >> 16) & 0xff) - ((want >> 16) & 0xff);
-                    int dg = ((rgb >> 8) & 0xff) - ((want >> 8) & 0xff);
-                    int db = (rgb & 0xff) - (want & 0xff);
-                    all++;
-                    if (dr * dr + dg * dg + db * db <= BACKDROP_TOLERANCE * BACKDROP_TOLERANCE) close++;
-                }
-            }
-            return all == 0 ? 1 : (double) close / all;
-        } catch (IOException | RuntimeException e) {
-            return 1;
-        }
-    }
-
     /** Where her face, hands and eyes are: asked of Gemini, else the framing's usual places. */
     private Layout layout(OwnerPose p, Image picture) {
         Layout fallback = defaults(p);
@@ -423,7 +391,7 @@ public class OwnerPoseService {
 
     static PoseView view(OwnerPose p) {
         return new PoseView(p.getId(), p.getMood().name(), p.getFraming().name(), p.getSide().name(),
-                p.getOutfit().name(), p.getBackdropHex(), p.getEdgeHex(), p.getStatus().name(), p.getImageUrl(),
+                p.getOutfit().name(), p.getBackdropHex(), p.getEdgeHex(), p.getStatus().name(), p.getImageUrl(), p.getCutoutUrl(),
                 p.getWidth(), p.getHeight(), read(p.getLayout()), p.getNote(), p.getModel(), p.getCreatedBy(),
                 p.getApprovedBy(), p.getCreatedAt());
     }
@@ -439,13 +407,6 @@ public class OwnerPoseService {
         } catch (IllegalArgumentException e) {
             throw new UnprocessableException("\"" + raw + "\" isn't one of the choices.");
         }
-    }
-
-    private static String hex(String raw) {
-        if (raw == null || raw.isBlank()) return "#C8157A";
-        String v = raw.strip().toUpperCase(Locale.ROOT);
-        if (!v.matches("^#[0-9A-F]{6}$")) throw new UnprocessableException("Colours are written like #C8157A.");
-        return v;
     }
 
     private static double unit(double v) {

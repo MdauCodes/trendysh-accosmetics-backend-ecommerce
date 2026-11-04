@@ -102,7 +102,69 @@ public class CampaignDealService implements LiveDeals {
      * PRODUCTS, CATEGORIES or AUTO; {@code slug} null or blank = made from the title.
      */
     public record CampaignEdit(String title, String slug, String showAs, Boolean wholesaleApplies,
-                               List<DealInput> deals, UUID poseId, Boolean removePose) {}
+                               List<DealInput> deals, UUID poseId, Boolean removePose, Arrangement arrangement) {}
+
+    /**
+     * Where she stands, as a share of her place on the banner, and how big (1 is the usual size). Kept within limits so she
+     * can't be lost off the banner.
+     */
+    public record PosePlace(Double x, Double y, Double scale) {
+        PosePlace tidy() {
+            return new PosePlace(within(x, -120, 120, 0), within(y, -60, 60, 0), within(scale, 0.5, 1.8, 1));
+        }
+
+        private static double within(Double v, double min, double max, double otherwise) {
+            return v == null || v.isNaN() ? otherwise : Math.max(min, Math.min(max, v));
+        }
+    }
+
+    /** A laptop banner: its three parts from left to right ("pose", "words", "cards"), and her place. */
+    public record LaptopPlan(List<String> order, PosePlace pose) {}
+
+    /** A phone banner: which side she stands, whether the cards come above her, and her place. */
+    public record PhonePlan(String poseSide, Boolean cardsFirst, PosePlace pose) {}
+
+    /** How staff arranged a banner (owner, 2026-11-04): its colour, whether she is mirrored, and each device's plan. */
+    public record Arrangement(String color, Boolean flip, LaptopPlan laptop, PhonePlan phone) {}
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Only what the shop knows how to draw; null when nothing is left (the usual arrangement). */
+    static Arrangement tidy(Arrangement in) {
+        if (in == null) return null;
+        String color = in.color() != null && in.color().matches("^#[0-9a-fA-F]{6}$") ? in.color() : null;
+        LaptopPlan laptop = null;
+        if (in.laptop() != null) {
+            List<String> order = in.laptop().order();
+            boolean good = order != null && order.size() == 3 && new HashSet<>(order).equals(Set.of("pose", "words", "cards"));
+            laptop = new LaptopPlan(good ? List.copyOf(order) : null,
+                    in.laptop().pose() == null ? null : in.laptop().pose().tidy());
+        }
+        PhonePlan phone = null;
+        if (in.phone() != null) {
+            String side = "left".equals(in.phone().poseSide()) || "right".equals(in.phone().poseSide()) ? in.phone().poseSide() : null;
+            phone = new PhonePlan(side, in.phone().cardsFirst(), in.phone().pose() == null ? null : in.phone().pose().tidy());
+        }
+        Boolean flip = Boolean.TRUE.equals(in.flip()) ? Boolean.TRUE : null;
+        return color == null && flip == null && laptop == null && phone == null ? null : new Arrangement(color, flip, laptop, phone);
+    }
+
+    private static String writeArrangement(Arrangement a) {
+        try {
+            return a == null ? null : JSON.writeValueAsString(a);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static Arrangement readArrangement(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return JSON.readValue(json, Arrangement.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return null;
+        }
+    }
 
     /**
      * A deal as staff see it. {@code state}: LIVE, WAITING (its campaign is not live yet), SOLD_OUT, CAP_REACHED or ENDED;
@@ -122,11 +184,11 @@ public class CampaignDealService implements LiveDeals {
 
     /** The campaign side of a banner, for staff. */
     public record CampaignAdmin(String title, String slug, String showAs, boolean wholesaleApplies,
-                                List<DealAdminView> deals, OwnerPoseService.PoseView pose) {}
+                                List<DealAdminView> deals, OwnerPoseService.PoseView pose, Arrangement arrangement) {}
 
     /** The campaign side of a banner, for the shop: its live deals only. */
     public record CampaignPublic(String title, String slug, String showAs, boolean hasDeals, List<DealCard> deals,
-                                 OwnerPoseService.PoseView pose) {}
+                                 OwnerPoseService.PoseView pose, Arrangement arrangement) {}
 
     // ---------------------------------------------------------------- what is live
 
@@ -324,7 +386,7 @@ public class CampaignDealService implements LiveDeals {
                     })
                     .filter(Objects::nonNull).toList();
             out.put(b.getId(), new CampaignPublic(title(b), b.getSlug(), b.getShowAs(),
-                    s.bannersWithDeals().contains(b.getId()), cards, shopPose(b)));
+                    s.bannersWithDeals().contains(b.getId()), cards, shopPose(b), readArrangement(b.getArrangement())));
         }
         return out;
     }
@@ -397,7 +459,7 @@ public class CampaignDealService implements LiveDeals {
             }).toList();
             OwnerPose pose = poses == null ? null : poses.findOrNull(b.getPoseId());
             return new CampaignAdmin(b.getTitle(), b.getSlug(), b.getShowAs(), b.isWholesaleApplies(), views,
-                    pose == null ? null : OwnerPoseService.view(pose));
+                    pose == null ? null : OwnerPoseService.view(pose), readArrangement(b.getArrangement()));
         });
     }
 
@@ -416,6 +478,7 @@ public class CampaignDealService implements LiveDeals {
             if (in.title() != null) b.setTitle(blankToNull(in.title(), 60));
             if (in.showAs() != null) b.setShowAs(showAs(in.showAs()));
             if (in.wholesaleApplies() != null) b.setWholesaleApplies(in.wholesaleApplies());
+            if (in.arrangement() != null) b.setArrangement(writeArrangement(tidy(in.arrangement())));
             if (Boolean.TRUE.equals(in.removePose())) b.setPoseId(null);
             else if (in.poseId() != null && poses != null) b.setPoseId(poses.approved(in.poseId()).getId());
             String slug = in.slug() == null || in.slug().isBlank()

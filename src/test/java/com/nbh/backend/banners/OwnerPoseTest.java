@@ -75,20 +75,53 @@ class OwnerPoseTest {
         assertThat(OwnerPoseService.measured(json.readTree("{}"), fallback)).isEqualTo(fallback);
     }
 
-    @Test
-    void theWrongBackdropIsNoticedAndAHandAtTheEdgeIsNot() throws Exception {
+    private static byte[] onScreen(int r, int g, int b) throws Exception {
         BufferedImage img = new BufferedImage(300, 400, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = img.createGraphics();
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, 300, 400);
-        g.setColor(Color.BLACK);
-        g.fillRect(280, 100, 20, 40); // a hand touching the side
-        g.dispose();
+        Graphics2D gfx = img.createGraphics();
+        gfx.setColor(new Color(r, g, b));
+        gfx.fillRect(0, 0, 300, 400);
+        gfx.setColor(new Color(0xE9, 0x1E, 0x8C)); // her blouse
+        gfx.fillRect(100, 100, 100, 150);
+        gfx.setColor(new Color(8, 12, 8)); // her skirt, running off the bottom
+        gfx.fillRect(100, 250, 100, 150);
+        gfx.dispose();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ImageIO.write(img, "png", out);
-        var picture = new GeminiImageClient.Image(out.toByteArray(), "image/png");
-        assertThat(OwnerPoseService.backdropMatch(picture, "#FFFFFF")).isGreaterThan(OwnerPoseService.BACKDROP_ENOUGH);
-        assertThat(OwnerPoseService.backdropMatch(picture, "#C8157A")).isLessThan(OwnerPoseService.BACKDROP_ENOUGH);
+        return out.toByteArray();
+    }
+
+    @Test
+    void sheIsCutOutOfTheGreenScreenWithHerClothesWhole() throws Exception {
+        byte[] png = PoseCutout.cut(onScreen(0x00, 0xB1, 0x40)).orElseThrow();
+        BufferedImage cut = ImageIO.read(new java.io.ByteArrayInputStream(png));
+        assertThat(cut.getColorModel().hasAlpha()).isTrue();
+        assertThat(cut.getRGB(5, 5) >>> 24).isZero();
+        assertThat(cut.getRGB(150, 150) >>> 24).isEqualTo(255);
+        assertThat(cut.getRGB(150, 300) >>> 24).as("a black skirt is not a hole").isEqualTo(255);
+        assertThat((cut.getRGB(150, 150) >> 8) & 0xff).as("her blouse keeps its colour").isEqualTo(0x1E);
+    }
+
+    @Test
+    void aPictureWithoutACleanScreenIsRefused() throws Exception {
+        assertThat(PoseCutout.cut(onScreen(0xC8, 0x15, 0x7A))).isEmpty();
+        assertThat(PoseCutout.cut(new byte[] {1, 2, 3})).isEmpty();
+    }
+
+    @Test
+    void anArrangementKeepsOnlyWhatTheShopCanDraw() {
+        var messy = new CampaignDealService.Arrangement("not a colour", null,
+                new CampaignDealService.LaptopPlan(java.util.List.of("pose", "pose", "cards"),
+                        new CampaignDealService.PosePlace(999d, -999d, 9d)),
+                new CampaignDealService.PhonePlan("middle", true, null));
+        var tidy = CampaignDealService.tidy(messy);
+        assertThat(tidy.color()).isNull();
+        assertThat(tidy.laptop().order()).isNull();
+        assertThat(tidy.laptop().pose()).isEqualTo(new CampaignDealService.PosePlace(120d, -60d, 1.8));
+        assertThat(tidy.phone().poseSide()).isNull();
+        assertThat(CampaignDealService.tidy(new CampaignDealService.Arrangement(null, false, null, null))).isNull();
+        var good = new CampaignDealService.Arrangement("#3A0B2C", true,
+                new CampaignDealService.LaptopPlan(java.util.List.of("cards", "pose", "words"), null), null);
+        assertThat(CampaignDealService.tidy(good)).isEqualTo(good);
     }
 
     @Test
