@@ -138,4 +138,8 @@ public class PromoBanner extends BaseEntity {
     /** Whether a deal product's wholesale price still applies while the campaign runs (the cheaper of the two). */
     @Column(name = "wholesale_applies", nullable = false)
     private boolean wholesaleApplies;
+
+    /** The owner's pose the banner shows (an approved OwnerPose), or null for the banner's own picture only. */
+    @Column(name = "pose_id")
+    private UUID poseId;
 }

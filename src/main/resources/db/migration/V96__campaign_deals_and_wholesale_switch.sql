@@ -54,3 +54,48 @@ CREATE INDEX idx_order_item_campaign_deal ON customer_order_item (campaign_deal_
 -- Wholesale prices on or off for the whole shop. Off: none is charged or shown, but every product's tier stays saved.
 ALTER TABLE shop_settings ADD COLUMN wholesale_on BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE shop_settings ADD COLUMN wholesale_changed_by VARCHAR(200);
+
+-- The owner's face on the banners (owner, 2026-11-04): real photos of her (references), and the poses Gemini makes from
+-- them, each approved by a person before use. A pose comes on a plain backdrop; the banner takes the backdrop's edge
+-- colour, so she blends in with no join. Feet are left out unless a spot really needs a full-height figure.
+CREATE TABLE owner_photo (
+    id UUID PRIMARY KEY,
+    image_url TEXT NOT NULL,
+    note VARCHAR(200),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE owner_pose (
+    id UUID PRIMARY KEY,
+    -- LOOK, AMAZED, SURPRISED, MISS_OUT, WELCOME, POINTING
+    mood VARCHAR(12) NOT NULL,
+    -- HEAD (head and shoulders), WAIST, KNEE (the default for a standing figure), FULL (only when a spot asks)
+    framing VARCHAR(6) NOT NULL,
+    -- the side of the banner she stands on: LEFT or RIGHT (her pose turns toward the deals on the other side)
+    side VARCHAR(5) NOT NULL,
+    outfit VARCHAR(12) NOT NULL,
+    -- the backdrop asked for, and the edge colour measured on the picture made (what the banner fills with)
+    backdrop_hex VARCHAR(7) NOT NULL,
+    edge_hex VARCHAR(7),
+    -- MAKING, READY (to look at), APPROVED (usable), REJECTED, FAILED
+    status VARCHAR(9) NOT NULL,
+    image_url TEXT,
+    width INT,
+    height INT,
+    -- where to place and crop her: focal point, face box (never cropped), safe box (head to hands), lowest cut (JSON)
+    layout TEXT,
+    brief TEXT,
+    note TEXT,
+    model VARCHAR(60),
+    created_by VARCHAR(200),
+    approved_by VARCHAR(200),
+    approved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_owner_pose_status ON owner_pose (status, created_at DESC);
+
+-- The pose a campaign's banner shows; none = the banner's own picture only.
+ALTER TABLE promo_banner ADD COLUMN pose_id UUID REFERENCES owner_pose(id) ON DELETE SET NULL;

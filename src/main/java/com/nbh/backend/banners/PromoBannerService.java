@@ -290,6 +290,7 @@ public class PromoBannerService {
             b.setTitle(from.getTitle());
             b.setShowAs(from.getShowAs());
             b.setWholesaleApplies(from.isWholesaleApplies());
+            b.setPoseId(from.getPoseId());
             b.setCreatedBy(staff);
             UUID newId = banners.save(b).getId();
             if (campaigns != null) campaigns.copyDeals(id, newId);

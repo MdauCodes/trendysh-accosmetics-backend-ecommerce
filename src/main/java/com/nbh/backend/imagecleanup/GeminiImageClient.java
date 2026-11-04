@@ -88,18 +88,26 @@ public class GeminiImageClient {
      * the shape to Gemini). A model that refuses the shape is asked again without it rather than failing.
      */
     public Image edit(Image reference, java.util.List<Image> extras, String prompt, String aspectRatio) {
-        if (aspectRatio == null) return editShaped(reference, extras, prompt, null);
+        return edit(null, reference, extras, prompt, aspectRatio);
+    }
+
+    /**
+     * As above with another image model than the configured one ({@code model} null = the configured one): the owner's
+     * poses (owner, 2026-11-04) use a newer model that keeps a real person's likeness better.
+     */
+    public Image edit(String model, Image reference, java.util.List<Image> extras, String prompt, String aspectRatio) {
+        if (aspectRatio == null) return editShaped(model, reference, extras, prompt, null);
         try {
-            return editShaped(reference, extras, prompt, aspectRatio);
+            return editShaped(model, reference, extras, prompt, aspectRatio);
         } catch (GeminiException e) {
             String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
             if (!m.contains("http 400") || !(m.contains("aspect") || m.contains("imageconfig"))) throw e;
             log.warn("Gemini model {} refused aspect ratio {}; asking without it", config.getGeminiModel(), aspectRatio);
-            return editShaped(reference, extras, prompt, null);
+            return editShaped(model, reference, extras, prompt, null);
         }
     }
 
-    private Image editShaped(Image reference, java.util.List<Image> extras, String prompt, String aspectRatio) {
+    private Image editShaped(String model, Image reference, java.util.List<Image> extras, String prompt, String aspectRatio) {
         if (!config.geminiConfigured()) {
             throw new GeminiException("Gemini isn't configured — set GEMINI_API_KEY.", false);
         }
@@ -115,11 +123,11 @@ public class GeminiImageClient {
         body.put("contents", List.of(Map.of("parts", list.toArray())));
         if (aspectRatio != null) body.put("generationConfig", Map.of("imageConfig", Map.of("aspectRatio", aspectRatio)));
         try {
-            return attempt(body);
+            return attempt(model, body);
         } catch (HttpServerErrorException | ResourceAccessException first) {
             pause();
             try {
-                return attempt(body);
+                return attempt(model, body);
             } catch (HttpServerErrorException e) {
                 throw new GeminiException("Gemini failed (server error " + e.getStatusCode().value() + "): "
                         + e.getResponseBodyAsString(), false);
@@ -132,7 +140,7 @@ public class GeminiImageClient {
             if (e.getStatusCode().value() == 429) {
                 pause();
                 try {
-                    return attempt(body);
+                    return attempt(model, body);
                 } catch (HttpClientErrorException again) {
                     throw new GeminiException("Gemini is still rate-limiting after one retry (HTTP "
                             + again.getStatusCode().value() + "): " + again.getResponseBodyAsString(), true);
@@ -164,12 +172,13 @@ public class GeminiImageClient {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private GeminiLimiter limiter;
 
-    private Image attempt(Map<String, Object> body) {
-        return limiter == null ? attemptNow(body) : limiter.call(() -> attemptNow(body));
+    private Image attempt(String model, Map<String, Object> body) {
+        return limiter == null ? attemptNow(model, body) : limiter.call(() -> attemptNow(model, body));
     }
 
-    private Image attemptNow(Map<String, Object> body) {
-        String url = config.getGeminiBaseUrl() + "/v1beta/models/" + config.getGeminiModel() + ":generateContent";
+    private Image attemptNow(String model, Map<String, Object> body) {
+        String url = config.getGeminiBaseUrl() + "/v1beta/models/" + (model == null ? config.getGeminiModel() : model)
+                + ":generateContent";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("x-goog-api-key", config.effectiveGeminiKey());

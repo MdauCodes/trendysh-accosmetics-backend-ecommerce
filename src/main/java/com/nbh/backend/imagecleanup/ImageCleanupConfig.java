@@ -23,6 +23,11 @@ public class ImageCleanupConfig {
     private String geminiBaseUrl = "https://generativelanguage.googleapis.com";
     private String geminiModel = "gemini-2.5-flash-image";
     /**
+     * The image model that makes the owner's poses for campaign banners (owner, 2026-11-04): a newer one than
+     * {@link #geminiModel}, because it keeps a real person's likeness far better (the 4 Nov trial). GEMINI_POSE_MODEL.
+     */
+    private String poseModel = "gemini-3.1-flash-image";
+    /**
      * The text model that writes product descriptions (same API key as the photo editing). gemini-2.5-flash was
      * closed to new users (404 "no longer available", 2026-10-10); Google named gemini-3.8-flash as its replacement.
      * Overridable with GEMINI_DESCRIPTION_MODEL so the next retirement needs a setting, not a release.

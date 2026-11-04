@@ -65,6 +65,9 @@ public class CampaignDealService implements LiveDeals {
     private final StockAvailabilityService availability;
     private final VariantCovers covers;
     private final ApplicationEventPublisher events;
+    /** The owner's poses (set by Spring; may be left out of hand-built instances). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private OwnerPoseService poses;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
     private final Clock clock;
@@ -99,7 +102,7 @@ public class CampaignDealService implements LiveDeals {
      * PRODUCTS, CATEGORIES or AUTO; {@code slug} null or blank = made from the title.
      */
     public record CampaignEdit(String title, String slug, String showAs, Boolean wholesaleApplies,
-                               List<DealInput> deals) {}
+                               List<DealInput> deals, UUID poseId, Boolean removePose) {}
 
     /**
      * A deal as staff see it. {@code state}: LIVE, WAITING (its campaign is not live yet), SOLD_OUT, CAP_REACHED or ENDED;
@@ -119,10 +122,11 @@ public class CampaignDealService implements LiveDeals {
 
     /** The campaign side of a banner, for staff. */
     public record CampaignAdmin(String title, String slug, String showAs, boolean wholesaleApplies,
-                                List<DealAdminView> deals) {}
+                                List<DealAdminView> deals, OwnerPoseService.PoseView pose) {}
 
     /** The campaign side of a banner, for the shop: its live deals only. */
-    public record CampaignPublic(String title, String slug, String showAs, boolean hasDeals, List<DealCard> deals) {}
+    public record CampaignPublic(String title, String slug, String showAs, boolean hasDeals, List<DealCard> deals,
+                                 OwnerPoseService.PoseView pose) {}
 
     // ---------------------------------------------------------------- what is live
 
@@ -319,9 +323,16 @@ public class CampaignDealService implements LiveDeals {
                                 p.getCategories().stream().map(Category::getId).toList(), price, ld.priceOf(price));
                     })
                     .filter(Objects::nonNull).toList();
-            out.put(b.getId(), new CampaignPublic(title(b), b.getSlug(), b.getShowAs(), s.bannersWithDeals().contains(b.getId()), cards));
+            out.put(b.getId(), new CampaignPublic(title(b), b.getSlug(), b.getShowAs(),
+                    s.bannersWithDeals().contains(b.getId()), cards, shopPose(b)));
         }
         return out;
+    }
+
+    /** The banner's pose for the shop: only an approved one shows. */
+    private OwnerPoseService.PoseView shopPose(PromoBanner b) {
+        OwnerPose p = poses == null ? null : poses.findOrNull(b.getPoseId());
+        return p == null || p.getStatus() != OwnerPose.Status.APPROVED ? null : OwnerPoseService.view(p);
     }
 
     /** The option a product-wide deal shows: its first in stock (else its first); a one-option deal, that option. */
@@ -384,7 +395,9 @@ public class CampaignDealService implements LiveDeals {
                         d.getBuyQty(), d.getFreeQty(), d.getCapQty(), d.getEndsAt(), d.getPosition(), price, dealPrice,
                         stock, soldHere, state);
             }).toList();
-            return new CampaignAdmin(b.getTitle(), b.getSlug(), b.getShowAs(), b.isWholesaleApplies(), views);
+            OwnerPose pose = poses == null ? null : poses.findOrNull(b.getPoseId());
+            return new CampaignAdmin(b.getTitle(), b.getSlug(), b.getShowAs(), b.isWholesaleApplies(), views,
+                    pose == null ? null : OwnerPoseService.view(pose));
         });
     }
 
@@ -403,6 +416,8 @@ public class CampaignDealService implements LiveDeals {
             if (in.title() != null) b.setTitle(blankToNull(in.title(), 60));
             if (in.showAs() != null) b.setShowAs(showAs(in.showAs()));
             if (in.wholesaleApplies() != null) b.setWholesaleApplies(in.wholesaleApplies());
+            if (Boolean.TRUE.equals(in.removePose())) b.setPoseId(null);
+            else if (in.poseId() != null && poses != null) b.setPoseId(poses.approved(in.poseId()).getId());
             String slug = in.slug() == null || in.slug().isBlank()
                     ? (b.getSlug() != null ? b.getSlug() : slugOf(CampaignDealService.title(b)))
                     : slugOf(in.slug());
