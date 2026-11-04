@@ -582,7 +582,9 @@ public class PromoBannerService {
     /** {@code hasDeals}: a campaign's deals are its cards and its offer, so it needs no featured products. */
     static List<String> missing(PromoBanner b, List<ProductCard> products, boolean hasDeals) {
         List<String> out = new ArrayList<>();
-        if (b.getImageUrl() == null) out.add("choose a picture");
+        // A home banner with the owner's pose has its picture: the campaign is drawn from the pose.
+        boolean posed = b.getPlacement() == PromoBanner.Placement.HERO && b.getPoseId() != null;
+        if (b.getImageUrl() == null && !posed) out.add("choose a picture or a pose of the owner");
         boolean circle = b.getPlacement() == PromoBanner.Placement.CIRCLE;
         if (circle && b.getCategoryId() == null) out.add("choose whose circle it is");
         if (!circle && (b.getHeadline() == null || b.getHeadline().isBlank())) out.add("write a headline");

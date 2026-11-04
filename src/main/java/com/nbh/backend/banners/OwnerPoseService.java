@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * The owner's face on the banners (owner, 2026-11-04). Staff keep a few real photos of her ({@link OwnerPhoto}); Gemini
@@ -44,7 +45,10 @@ public class OwnerPoseService {
     /** Photos shown to Gemini for one pose (the 4 Nov trial used three). */
     static final int MAX_REFERENCES = 3;
     /** Poses one request may make. */
-    static final int MAX_PER_REQUEST = 4;
+    static final int MAX_PER_REQUEST = OwnerPosePrompts.VARIANTS;
+    /** How far (in RGB) an edge pixel may be from the backdrop asked for, and how much of the edge must be that close. */
+    static final int BACKDROP_TOLERANCE = 45;
+    static final double BACKDROP_ENOUGH = 0.75;
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -144,6 +148,7 @@ public class OwnerPoseService {
             int count = in.count() == null ? 1 : Math.max(1, Math.min(MAX_PER_REQUEST, in.count()));
             List<UUID> ids = new ArrayList<>();
             for (int i = 0; i < count; i++) {
+                // count is at most the number of directions, so no two pictures of a request are asked for alike
                 OwnerPose p = new OwnerPose();
                 p.setMood(enumOf(OwnerPose.Mood.class, in.mood(), OwnerPose.Mood.LOOK));
                 p.setFraming(enumOf(OwnerPose.Framing.class, in.framing(), OwnerPose.Framing.KNEE));
@@ -158,17 +163,18 @@ public class OwnerPoseService {
             }
             return ids;
         });
-        made.forEach(id -> self.makeInBackground(id));
+        int first = ThreadLocalRandom.current().nextInt(OwnerPosePrompts.VARIANTS);
+        for (int i = 0; i < made.size(); i++) self.makeInBackground(made.get(i), first + i);
         return library();
     }
 
     @Async
-    public void makeInBackground(UUID poseId) {
-        makeNow(poseId);
+    public void makeInBackground(UUID poseId, int variant) {
+        makeNow(poseId, variant);
     }
 
     /** The work itself (tests call it directly). */
-    void makeNow(UUID poseId) {
+    void makeNow(UUID poseId, int variant) {
         record Job(OwnerPose pose, List<String> refs) {}
         Job job = tx.execute(s -> {
             OwnerPose p = poses.findById(poseId).orElse(null);
@@ -183,11 +189,23 @@ public class OwnerPoseService {
             for (String url : job.refs()) refs.add(images.download(url));
             if (refs.isEmpty()) throw new UnprocessableException("There is no photo of the owner to start from.");
             OwnerPose p = job.pose();
-            Image picture = images.edit(config.getPoseModel(), refs.get(0), refs.subList(1, refs.size()),
-                    OwnerPosePrompts.prompt(p, p.getBrief()), OwnerPosePrompts.aspectRatio(p.getFraming()));
-            Measured m = measure(picture);
-            Layout layout = layout(p, picture);
-            String url = cloudinary.upload(picture.bytes(), "owner-poses",
+            String prompt = OwnerPosePrompts.prompt(p, p.getBrief(), variant);
+            Image picture = paint(p, refs, prompt);
+            double onBackdrop = backdropMatch(picture, p.getBackdropHex());
+            if (onBackdrop < BACKDROP_ENOUGH) {
+                // Shelves from the reference photos, or the wrong colour: one more try, keeping whichever came closer.
+                Image again = paint(p, refs, prompt + OwnerPosePrompts.backdropAgain(p.getBackdropHex()));
+                double second = backdropMatch(again, p.getBackdropHex());
+                if (second > onBackdrop) {
+                    picture = again;
+                    onBackdrop = second;
+                }
+            }
+            boolean backdropOff = onBackdrop < BACKDROP_ENOUGH;
+            Image chosen = picture;
+            Measured m = measure(chosen);
+            Layout layout = layout(p, chosen);
+            String url = cloudinary.upload(chosen.bytes(), "owner-poses",
                     "pose-" + p.getMood().name().toLowerCase(Locale.ROOT) + "-" + clock.millis()).url();
             tx.executeWithoutResult(s -> poses.findById(poseId).ifPresent(x -> {
                 x.setStatus(OwnerPose.Status.READY);
@@ -196,13 +214,19 @@ public class OwnerPoseService {
                 x.setHeight(m.height());
                 x.setEdgeHex(m.edgeHex());
                 x.setLayout(write(layout));
-                x.setNote(layout.measured() ? null : "Her face and hands couldn't be measured; the usual places are assumed.");
+                x.setNote(backdropOff ? "The backdrop came out a different shade than asked; the banner takes the shade it got."
+                        : layout.measured() ? null : "Her face and hands couldn't be measured; the usual places are assumed.");
             }));
         } catch (GeminiException e) {
             fail(poseId, e.isQuotaExceeded() ? "Gemini's limit for now is used up. Try again later." : e.getMessage());
         } catch (RuntimeException e) {
             fail(poseId, "The pose could not be made: " + e.getMessage());
         }
+    }
+
+    private Image paint(OwnerPose p, List<Image> refs, String prompt) {
+        return images.edit(config.getPoseModel(), refs.get(0), refs.subList(1, refs.size()), prompt,
+                OwnerPosePrompts.aspectRatio(p.getFraming()), OwnerPosePrompts.IMAGE_SIZE);
     }
 
     private void fail(UUID poseId, String why) {
@@ -297,6 +321,36 @@ public class OwnerPoseService {
         }
     }
 
+    /**
+     * How much of the picture's top and side edges is the colour asked for, 0 to 1 (1 when it can't be read, so a
+     * picture is never made twice over that). A sleeve or hand may touch an edge; shelves or a grey wall fill it.
+     */
+    static double backdropMatch(Image picture, String hex) {
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(picture.bytes()));
+            if (img == null || hex == null) return 1;
+            int want = Integer.parseInt(hex.substring(1), 16);
+            int w = img.getWidth(), h = img.getHeight();
+            int band = Math.max(2, Math.min(w, h) / 40);
+            int step = Math.max(1, Math.min(w, h) / 200);
+            long close = 0, all = 0;
+            for (int y = 0; y < h; y += step) {
+                for (int x = 0; x < w; x += step) {
+                    if (y >= band && x >= band && x < w - band) continue;
+                    int rgb = img.getRGB(x, y);
+                    int dr = ((rgb >> 16) & 0xff) - ((want >> 16) & 0xff);
+                    int dg = ((rgb >> 8) & 0xff) - ((want >> 8) & 0xff);
+                    int db = (rgb & 0xff) - (want & 0xff);
+                    all++;
+                    if (dr * dr + dg * dg + db * db <= BACKDROP_TOLERANCE * BACKDROP_TOLERANCE) close++;
+                }
+            }
+            return all == 0 ? 1 : (double) close / all;
+        } catch (IOException | RuntimeException e) {
+            return 1;
+        }
+    }
+
     /** Where her face, hands and eyes are: asked of Gemini, else the framing's usual places. */
     private Layout layout(OwnerPose p, Image picture) {
         Layout fallback = defaults(p);
@@ -311,20 +365,42 @@ public class OwnerPoseService {
                     "properties", Map.of("faceBox", box, "safeBox", box, "focal", point),
                     "required", List.of("faceBox", "safeBox", "focal"));
             JsonNode a = text.ask(picture, OwnerPosePrompts.MEASURE, schema);
-            Box face = clamp(new Box(a.path("faceBox").path("x").asDouble(), a.path("faceBox").path("y").asDouble(),
-                    a.path("faceBox").path("w").asDouble(), a.path("faceBox").path("h").asDouble()));
-            Box safe = clamp(new Box(a.path("safeBox").path("x").asDouble(), a.path("safeBox").path("y").asDouble(),
-                    a.path("safeBox").path("w").asDouble(), a.path("safeBox").path("h").asDouble()));
-            Point focal = clamp(new Point(a.path("focal").path("x").asDouble(), a.path("focal").path("y").asDouble()));
-            // A face that is not inside the safe box, or of no size, is a wrong answer: keep the usual places.
-            if (face.w() < 0.03 || face.h() < 0.03 || safe.w() < face.w() || safe.h() < face.h()) return fallback;
-            double floor = Math.max(fallback.cropFloor(), Math.min(1, safe.y() + safe.h()));
-            return new Layout(fallback.figureSide(), fallback.facing(), fallback.framing(), focal, face, safe, floor,
-                    "BOTTOM", true);
+            Layout measured = measured(a, fallback);
+            if (!measured.measured()) log.warn("Owner pose {}: measuring gave an unusable answer: {}", p.getId(), a);
+            return measured;
         } catch (RuntimeException e) {
             log.warn("Could not measure owner pose {}: {}", p.getId(), e.getMessage());
             return fallback;
         }
+    }
+
+    /**
+     * The layout from Gemini's answer, or {@code fallback} if it makes no sense. Gemini may answer boxes in thousandths
+     * whatever it is asked, so those are scaled back. The safe box always holds the face.
+     */
+    static Layout measured(JsonNode a, Layout fallback) {
+        double scale = 1;
+        for (String part : List.of("faceBox", "safeBox", "focal")) {
+            for (String field : List.of("x", "y", "w", "h")) {
+                if (a.path(part).path(field).asDouble() > 1) scale = 1000;
+            }
+        }
+        Box face = clamp(box(a.path("faceBox"), scale));
+        Box safe = clamp(box(a.path("safeBox"), scale));
+        Point focal = clamp(new Point(a.path("focal").path("x").asDouble() / scale, a.path("focal").path("y").asDouble() / scale));
+        if (face.w() < 0.03 || face.h() < 0.03) return fallback;
+        double left = Math.min(safe.x(), face.x()), top = Math.min(safe.y(), face.y());
+        double right = Math.max(safe.x() + safe.w(), face.x() + face.w());
+        double bottom = Math.max(safe.y() + safe.h(), face.y() + face.h());
+        Box holding = new Box(left, top, right - left, bottom - top);
+        double floor = Math.max(fallback.cropFloor(), Math.min(1, bottom));
+        return new Layout(fallback.figureSide(), fallback.facing(), fallback.framing(), focal, face, holding, floor,
+                "BOTTOM", true);
+    }
+
+    private static Box box(JsonNode n, double scale) {
+        return new Box(n.path("x").asDouble() / scale, n.path("y").asDouble() / scale, n.path("w").asDouble() / scale,
+                n.path("h").asDouble() / scale);
     }
 
     /** The usual places of her face and hands for each framing, before (or without) measuring. */

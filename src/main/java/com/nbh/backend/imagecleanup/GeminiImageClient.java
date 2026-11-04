@@ -52,7 +52,8 @@ public class GeminiImageClient {
         this.config = config;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5_000);
-        factory.setReadTimeout(90_000);
+        // 90 seconds was enough for 1K; a 2K picture from the Pro model (owner poses) can take longer.
+        factory.setReadTimeout(180_000);
         this.http = new RestTemplate(factory);
     }
 
@@ -96,18 +97,34 @@ public class GeminiImageClient {
      * poses (owner, 2026-11-04) use a newer model that keeps a real person's likeness better.
      */
     public Image edit(String model, Image reference, java.util.List<Image> extras, String prompt, String aspectRatio) {
-        if (aspectRatio == null) return editShaped(model, reference, extras, prompt, null);
+        return edit(model, reference, extras, prompt, aspectRatio, null);
+    }
+
+    /** As above, asking for a size too ("2K"); a model that refuses the size is asked again at its usual one. */
+    public Image edit(String model, Image reference, java.util.List<Image> extras, String prompt, String aspectRatio,
+                      String imageSize) {
+        if (imageSize != null) {
+            try {
+                return editShaped(model, reference, extras, prompt, aspectRatio, imageSize);
+            } catch (GeminiException e) {
+                String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
+                if (!m.contains("http 400") || !(m.contains("imagesize") || m.contains("image_size"))) throw e;
+                log.warn("Gemini model {} refused image size {}; asking without it", model, imageSize);
+            }
+        }
+        if (aspectRatio == null) return editShaped(model, reference, extras, prompt, null, null);
         try {
-            return editShaped(model, reference, extras, prompt, aspectRatio);
+            return editShaped(model, reference, extras, prompt, aspectRatio, null);
         } catch (GeminiException e) {
             String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
             if (!m.contains("http 400") || !(m.contains("aspect") || m.contains("imageconfig"))) throw e;
             log.warn("Gemini model {} refused aspect ratio {}; asking without it", config.getGeminiModel(), aspectRatio);
-            return editShaped(model, reference, extras, prompt, null);
+            return editShaped(model, reference, extras, prompt, null, null);
         }
     }
 
-    private Image editShaped(String model, Image reference, java.util.List<Image> extras, String prompt, String aspectRatio) {
+    private Image editShaped(String model, Image reference, java.util.List<Image> extras, String prompt, String aspectRatio,
+                             String imageSize) {
         if (!config.geminiConfigured()) {
             throw new GeminiException("Gemini isn't configured — set GEMINI_API_KEY.", false);
         }
@@ -121,7 +138,10 @@ public class GeminiImageClient {
         }
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("contents", List.of(Map.of("parts", list.toArray())));
-        if (aspectRatio != null) body.put("generationConfig", Map.of("imageConfig", Map.of("aspectRatio", aspectRatio)));
+        Map<String, Object> imageConfig = new java.util.LinkedHashMap<>();
+        if (aspectRatio != null) imageConfig.put("aspectRatio", aspectRatio);
+        if (imageSize != null) imageConfig.put("imageSize", imageSize);
+        if (!imageConfig.isEmpty()) body.put("generationConfig", Map.of("imageConfig", imageConfig));
         try {
             return attempt(model, body);
         } catch (HttpServerErrorException | ResourceAccessException first) {
