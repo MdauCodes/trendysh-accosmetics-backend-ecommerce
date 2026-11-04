@@ -124,8 +124,13 @@ public class CampaignDealService implements LiveDeals {
     /** A phone banner: which side she stands, whether the cards come above her, and her place. */
     public record PhonePlan(String poseSide, Boolean cardsFirst, PosePlace pose) {}
 
-    /** How staff arranged a banner (owner, 2026-11-04): its colour, whether she is mirrored, and each device's plan. */
-    public record Arrangement(String color, Boolean flip, LaptopPlan laptop, PhonePlan phone) {}
+    /**
+     * How staff arranged a banner (owner, 2026-11-04): its colour, whether she is mirrored, each device's plan, and its look:
+     * {@code badge} a badge shape (empty: a different mix each visit), {@code accent} the badges' colour, {@code torn} the
+     * torn paper behind her: "on", "off" or empty (it comes and goes by itself).
+     */
+    public record Arrangement(String color, Boolean flip, LaptopPlan laptop, PhonePlan phone, String badge, String accent,
+                              String torn) {}
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -146,7 +151,12 @@ public class CampaignDealService implements LiveDeals {
             phone = new PhonePlan(side, in.phone().cardsFirst(), in.phone().pose() == null ? null : in.phone().pose().tidy());
         }
         Boolean flip = Boolean.TRUE.equals(in.flip()) ? Boolean.TRUE : null;
-        return color == null && flip == null && laptop == null && phone == null ? null : new Arrangement(color, flip, laptop, phone);
+        String badge = in.badge() != null && Set.of("pill", "slant", "tag", "stamp", "torn").contains(in.badge()) ? in.badge() : null;
+        String accent = in.accent() != null && in.accent().matches("^#[0-9a-fA-F]{6}$") ? in.accent() : null;
+        String torn = "on".equals(in.torn()) || "off".equals(in.torn()) ? in.torn() : null;
+        return color == null && flip == null && laptop == null && phone == null && badge == null && accent == null && torn == null
+                ? null
+                : new Arrangement(color, flip, laptop, phone, badge, accent, torn);
     }
 
     private static String writeArrangement(Arrangement a) {
@@ -394,7 +404,7 @@ public class CampaignDealService implements LiveDeals {
     /** The banner's pose for the shop: only an approved one shows. */
     private OwnerPoseService.PoseView shopPose(PromoBanner b) {
         OwnerPose p = poses == null ? null : poses.findOrNull(b.getPoseId());
-        return p == null || p.getStatus() != OwnerPose.Status.APPROVED ? null : OwnerPoseService.view(p);
+        return p == null || p.getStatus() != OwnerPose.Status.APPROVED ? null : OwnerPoseService.forShop(p);
     }
 
     /** The option a product-wide deal shows: its first in stock (else its first); a one-option deal, that option. */

@@ -42,6 +42,7 @@ class OwnerPoseTest {
     @Test
     void everyMoodHasDifferentDirectionsSoVariantsAreNotRepeats() {
         for (OwnerPose.Mood mood : OwnerPose.Mood.values()) {
+            if (mood == OwnerPose.Mood.OWN) continue;
             assertThat(OwnerPosePrompts.directions(mood)).hasSize(OwnerPosePrompts.VARIANTS).doesNotHaveDuplicates();
             java.util.Set<String> prompts = new java.util.HashSet<>();
             OwnerPose p = pose(OwnerPose.Framing.KNEE, OwnerPose.Side.LEFT);
@@ -58,6 +59,51 @@ class OwnerPoseTest {
         assertThat(one).contains("comes first").contains("holding her waist").contains("#C8157A")
                 .doesNotContain("palm open and up");
         assertThat(OwnerPosePrompts.prompt(p, "holding her waist", 1)).isNotEqualTo(one);
+    }
+
+    @Test
+    void theShopsOwnWordsReplaceEachSettingAndVariantsStillDiffer() {
+        OwnerPose p = pose(OwnerPose.Framing.KNEE, OwnerPose.Side.LEFT);
+        var x = new OwnerPosePrompts.Extras(null, "holding her waist", "a stunned stare", "from the floor up", "neon light",
+                "a gel polish bottle", "a green-free red suit", "from far away", "in the middle, facing us");
+        String one = OwnerPosePrompts.prompt(p, null, 0, x);
+        assertThat(one).contains("holding her waist", "a stunned stare", "from the floor up", "neon light", "a gel polish bottle",
+                "a green-free red suit", "from far away", "in the middle, facing us")
+                .doesNotContain("hot-pink blouse", "palm open and up", "cropped just above the knees");
+        assertThat(OwnerPosePrompts.prompt(p, null, 1, x)).isNotEqualTo(one);
+    }
+
+    @Test
+    void theShopIsNotToldWhoMadeAPoseOrWhatTheyAskedFor() {
+        OwnerPose p = pose(OwnerPose.Framing.KNEE, OwnerPose.Side.LEFT);
+        p.setStatus(OwnerPose.Status.APPROVED);
+        p.setImageUrl("https://img.example.test/green.jpg");
+        p.setCutoutUrl("https://img.example.test/cut.png");
+        p.setBrief("a private prompt");
+        p.setCreatedBy("A Staff Member");
+        p.setApprovedBy("Another Staff Member");
+        var shop = OwnerPoseService.forShop(p);
+        assertThat(shop.brief()).isNull();
+        assertThat(shop.createdBy()).isNull();
+        assertThat(shop.approvedBy()).isNull();
+        assertThat(shop.imageUrl()).isEqualTo("https://img.example.test/cut.png");
+        assertThat(shop.cutoutUrl()).isEqualTo("https://img.example.test/cut.png");
+    }
+
+    @Test
+    void anOwnMoodWithoutWordsDrawsNoPresetPose() {
+        OwnerPose p = pose(OwnerPose.Framing.KNEE, OwnerPose.Side.LEFT);
+        p.setMood(OwnerPose.Mood.OWN);
+        assertThat(OwnerPosePrompts.prompt(p, "doing a little dance", 0)).contains("doing a little dance").doesNotContain("palm open");
+    }
+
+    @Test
+    void everyFramingHasAShapeAndAUsualLayout() {
+        for (OwnerPose.Framing f : OwnerPose.Framing.values()) {
+            assertThat(OwnerPosePrompts.aspectRatio(f)).isNotBlank();
+            assertThat(OwnerPosePrompts.framing(f)).startsWith("Framing:");
+            assertThat(OwnerPoseService.defaults(pose(f, OwnerPose.Side.RIGHT)).facing()).isEqualTo("LEFT");
+        }
     }
 
     @Test
@@ -112,15 +158,18 @@ class OwnerPoseTest {
         var messy = new CampaignDealService.Arrangement("not a colour", null,
                 new CampaignDealService.LaptopPlan(java.util.List.of("pose", "pose", "cards"),
                         new CampaignDealService.PosePlace(999d, -999d, 9d)),
-                new CampaignDealService.PhonePlan("middle", true, null));
+                new CampaignDealService.PhonePlan("middle", true, null), "cloud", "yellow", "maybe");
         var tidy = CampaignDealService.tidy(messy);
         assertThat(tidy.color()).isNull();
         assertThat(tidy.laptop().order()).isNull();
         assertThat(tidy.laptop().pose()).isEqualTo(new CampaignDealService.PosePlace(120d, -60d, 1.8));
         assertThat(tidy.phone().poseSide()).isNull();
-        assertThat(CampaignDealService.tidy(new CampaignDealService.Arrangement(null, false, null, null))).isNull();
+        assertThat(tidy.badge()).isNull();
+        assertThat(tidy.accent()).isNull();
+        assertThat(tidy.torn()).isNull();
+        assertThat(CampaignDealService.tidy(new CampaignDealService.Arrangement(null, false, null, null, null, null, null))).isNull();
         var good = new CampaignDealService.Arrangement("#3A0B2C", true,
-                new CampaignDealService.LaptopPlan(java.util.List.of("cards", "pose", "words"), null), null);
+                new CampaignDealService.LaptopPlan(java.util.List.of("cards", "pose", "words"), null), null, "torn", "#FFD60A", "off");
         assertThat(CampaignDealService.tidy(good)).isEqualTo(good);
     }
 

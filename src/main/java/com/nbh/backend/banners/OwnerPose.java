@@ -23,14 +23,19 @@ import java.time.Instant;
 @Table(name = "owner_pose")
 public class OwnerPose extends BaseEntity {
 
-    public enum Mood { LOOK, AMAZED, SURPRISED, MISS_OUT, WELCOME, POINTING }
+    public enum Mood {
+        LOOK, AMAZED, SURPRISED, MISS_OUT, WELCOME, POINTING, BOSS, LAUGHING, SECRET, BECKON, THUMBS_UP, CELEBRATE, THINKING,
+        SHOPPING,
+        /** The shop's own words say what she does. */
+        OWN
+    }
 
     /** How much of her: head and shoulders, waist up, knee up (no feet: the default), or full height (only when asked). */
-    public enum Framing { HEAD, WAIST, KNEE, FULL }
+    public enum Framing { CLOSE, HEAD, WAIST, THIGH, KNEE, FULL }
 
     public enum Side { LEFT, RIGHT }
 
-    public enum Outfit { PINK_BLOUSE, BLAZER }
+    public enum Outfit { PINK_BLOUSE, BLAZER, WHITE_BLAZER, BLACK_DRESS, MAGENTA_DRESS, OWN }
 
     public enum Status { MAKING, READY, APPROVED, REJECTED, FAILED }
 

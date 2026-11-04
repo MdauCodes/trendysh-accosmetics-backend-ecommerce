@@ -92,6 +92,63 @@ final class OwnerPosePrompts {
             new Direction("one hand on her waist, the other making a playful finger-gun toward the {T}",
                     "a wink and a confident grin at the camera", "close, at eye level", "glossy, warm light"));
 
+    private static final List<Direction> BOSS = List.of(
+            new Direction("arms folded, chin lifted, weight on one hip, the woman who owns the place", "a slow, confident smile straight into the camera",
+                    "from a low angle, so she looks powerful", "dramatic side light"),
+            new Direction("both hands on her hips, shoulders back, standing tall", "a proud, wide smile at the camera", "straight on at eye level", "crisp, clean light"),
+            new Direction("one hand adjusting her collar, the other at her side, stepping forward", "one eyebrow raised, a knowing half smile", "three-quarter view from slightly below",
+                    "glossy light with a rim on her shoulder"),
+            new Direction("leaning slightly forward with her hands clasped in front of her, as if about to make you an offer", "steady eyes on the camera, a warm, assured smile",
+                    "close, at eye level", "soft, even light"));
+
+    private static final List<Direction> LAUGHING = List.of(
+            new Direction("head tipped back, one hand on her chest, shoulders loose", "full, real laughter, eyes nearly shut", "slightly from below", "warm, window-like light"),
+            new Direction("bent a little at the waist, one hand on her stomach, the other waving as if to say 'stop it!'", "laughing with her mouth wide open", "straight on at eye level", "bright, fresh light"),
+            new Direction("a hand lightly covering her mouth, shoulders lifted", "giggling, eyes creased and sparkling", "close, from slightly above", "soft beauty light"),
+            new Direction("turning toward the {T} of the frame mid-laugh, locs swinging", "a big laugh shared with someone there", "three-quarter view at eye level", "warm light with a rim on her hair"));
+
+    private static final List<Direction> SECRET = List.of(
+            new Direction("leaning in with one hand cupped beside her mouth, whispering", "eyes sliding toward the {T}, a mischievous grin", "close, from slightly above", "moody light with a rim on her hair"),
+            new Direction("one finger on her lips, saying 'shh', leaning toward the camera", "playful wide eyes, one eyebrow raised", "close, at eye level", "soft, glossy light"),
+            new Direction("glancing over her shoulder as if checking nobody is listening, one hand shielding her mouth", "a cheeky, conspiratorial look", "three-quarter view at eye level", "side light with gentle shadows"),
+            new Direction("one hand pointing discreetly toward the {T}, kept low by her hip", "a sly sideways look at the camera, lips pressed in a smile", "slightly from above", "warm, soft light"));
+
+    private static final List<Direction> BECKON = List.of(
+            new Direction("one hand held out, curling her fingers to call you over", "an inviting smile straight at the camera", "straight on at eye level", "warm, bright light"),
+            new Direction("both hands waving you in toward the {T} of the frame", "excited, mouth open as if calling 'come, come!'", "slightly from below", "high-energy light"),
+            new Direction("one arm stretched out toward the camera, palm up, as if offering you her hand", "a warm, encouraging smile", "close, with her hand large and slightly soft in front", "soft beauty light"),
+            new Direction("half turned toward the {T}, looking back over her shoulder, one hand beckoning", "a playful, knowing smile at the camera", "three-quarter view at eye level", "warm light with a rim on her hair"));
+
+    private static final List<Direction> THUMBS_UP = List.of(
+            new Direction("one big thumbs up held toward the camera", "a wide, sure smile", "straight on at eye level", "bright, crisp light"),
+            new Direction("both thumbs up at chest height, shoulders bouncing", "beaming, eyes creased", "slightly from below", "high-energy light"),
+            new Direction("an 'OK' sign with one hand beside her cheek, the other on her hip", "a wink and a grin", "close, at eye level", "glossy light"),
+            new Direction("nodding, one thumb pointing toward the {T} of the frame", "an approving 'this one!' look, lips pushed out", "three-quarter view from slightly above", "side light with gentle shadows"));
+
+    private static final List<Direction> CELEBRATE = List.of(
+            new Direction("both fists raised high in triumph", "shouting with joy, mouth wide open", "slightly from below", "high-energy light"),
+            new Direction("mid-dance, one arm up and hips swaying, locs swinging", "a huge joyful smile, eyes on the camera", "straight on at eye level", "bright, punchy light"),
+            new Direction("clapping her hands in front of her chest, shoulders lifted", "delighted, laughing", "close, at eye level", "warm, glowing light"),
+            new Direction("arms flung wide open and head tipped back", "pure happiness, eyes closed, big smile", "from below", "fresh, bright light"));
+
+    private static final List<Direction> THINKING = List.of(
+            new Direction("one finger tapping her chin, other arm across her waist", "looking up and toward the {T}, lips pursed: 'hmm, which one?'", "straight on at eye level", "soft, even light"),
+            new Direction("hand under her chin, head tilted", "narrowed eyes and a small smile: she has just had an idea", "close, three-quarter view", "side light with gentle shadows"),
+            new Direction("one finger raised beside her head, the moment of an idea", "eyes wide and bright, mouth open in an 'aha!'", "slightly from below", "crisp, glossy light"),
+            new Direction("arms folded with one hand at her cheek, weighing it up", "one eyebrow raised, a sideways look toward the {T}", "three-quarter view at eye level", "warm, soft light"));
+
+    private static final List<Direction> SHOPPING = List.of(
+            new Direction("striding toward the {T} of the frame mid-step, carrying plain unbranded pink and white shopping bags in one raised hand", "looking back at the camera with a delighted smile", "three-quarter view at eye level", "bright, fresh light"),
+            new Direction("holding up plain unbranded shopping bags in both hands, arms wide", "triumphant, laughing", "slightly from below", "high-energy light"),
+            new Direction("hugging a plain unbranded shopping bag to her chest with both arms", "eyes closed, a blissful smile", "close, at eye level", "warm, soft light"),
+            new Direction("peeking into a plain unbranded shopping bag held open in front of her", "eyes wide with delight, mouth in an 'ooh'", "from slightly above", "glossy light"));
+
+    /** Chosen by the shop on top of the mood: each replaces what the direction would have done; empty leaves it free. */
+    record Extras(String note, String pose, String expression, String camera, String light, String holding, String outfit,
+                  String framing, String side) {
+        static final Extras NONE = new Extras(null, null, null, null, null, null, null, null, null);
+    }
+
     /** When the shop has written the pose itself: the same words, played four different ways. */
     private static final List<String> TAKES = List.of(
             "Play it big and theatrical, full of comedy.",
@@ -107,6 +164,15 @@ final class OwnerPosePrompts {
             case MISS_OUT -> MISS_OUT;
             case WELCOME -> WELCOME;
             case POINTING -> POINTING;
+            case BOSS -> BOSS;
+            case LAUGHING -> LAUGHING;
+            case SECRET -> SECRET;
+            case BECKON -> BECKON;
+            case THUMBS_UP -> THUMBS_UP;
+            case CELEBRATE -> CELEBRATE;
+            case THINKING -> THINKING;
+            case SHOPPING -> SHOPPING;
+            case OWN -> LOOK; // only its camera and light are used: the shop's words are the pose
         };
     }
 
@@ -114,6 +180,10 @@ final class OwnerPosePrompts {
         return switch (outfit) {
             case PINK_BLOUSE -> "She wears her own hot-pink blouse with ruffled puff sleeves and her black pencil skirt. ";
             case BLAZER -> "She wears her own hot-pink collared shirt under a black blazer, with a black pencil skirt. ";
+            case WHITE_BLAZER -> "She wears a crisp white tailored blazer over a magenta top, with a black pencil skirt. ";
+            case BLACK_DRESS -> "She wears an elegant fitted black dress with three-quarter sleeves. ";
+            case MAGENTA_DRESS -> "She wears an elegant fitted magenta dress with three-quarter sleeves. ";
+            case OWN -> "";
         };
     }
 
@@ -140,8 +210,10 @@ final class OwnerPosePrompts {
 
     static String framing(OwnerPose.Framing framing) {
         return switch (framing) {
+            case CLOSE -> "Framing: a close-up of her face and neck, filling the picture. ";
             case HEAD -> "Framing: head and shoulders, from just above her head to the middle of her chest. ";
             case WAIST -> "Framing: waist up, from just above her head to her waist. ";
+            case THIGH -> "Framing: from just above her head to mid-thigh; her knees and feet are NOT in the picture. ";
             case KNEE -> "Framing: cropped just above the knees, from just above her head to above her knees; her feet and"
                     + " shoes are NOT in the picture. ";
             case FULL -> "Framing: full height, from the top of her head to her shoes (black flats with a gold ankle strap),"
@@ -172,8 +244,8 @@ final class OwnerPosePrompts {
     /** The picture's shape: tall for a standing figure, nearly square for head and shoulders. */
     static String aspectRatio(OwnerPose.Framing framing) {
         return switch (framing) {
-            case HEAD -> "4:5";
-            case WAIST, KNEE -> "3:4";
+            case CLOSE, HEAD -> "4:5";
+            case WAIST, THIGH, KNEE -> "3:4";
             case FULL -> "9:16";
         };
     }
@@ -183,13 +255,37 @@ final class OwnerPosePrompts {
 
     /** {@code variant} picks the direction: different numbers give different pictures. */
     static String prompt(OwnerPose p, String note, int variant) {
-        boolean own = note != null && !note.isBlank();
-        String pose = own
-                ? "The shop's own direction for this picture comes first; follow it over anything else here: " + note.strip()
-                        + ". " + TAKES.get(Math.floorMod(variant, TAKES.size())) + " "
-                : pose(p.getMood(), p.getSide(), variant);
-        return IDENTITY + outfit(p.getOutfit()) + pose + framing(p.getFraming()) + camera(p.getMood(), variant)
-                + backdrop(p.getBackdropHex()) + QUALITY;
+        return prompt(p, note, variant, Extras.NONE);
+    }
+
+    /** As above, with what the shop chose or wrote for each setting. Fixed settings still leave the takes to vary. */
+    static String prompt(OwnerPose p, String note, int variant, Extras x) {
+        Direction d = direction(p.getMood(), variant);
+        boolean ownNote = filled(note);
+        boolean ownPose = filled(x.pose()) || p.getMood() == OwnerPose.Mood.OWN;
+        StringBuilder out = new StringBuilder(IDENTITY);
+        out.append(filled(x.outfit()) ? "She wears " + x.outfit().strip() + ". " : outfit(p.getOutfit()));
+        if (ownNote) {
+            out.append("The shop's own direction for this picture comes first; follow it over anything else here: ")
+                    .append(note.strip()).append(". ");
+        }
+        if (filled(x.pose())) out.append("Pose: ").append(x.pose().strip()).append(". ");
+        else if (!ownNote && !ownPose) out.append(sided("Pose: " + d.body() + ". ", p.getSide()));
+        if (filled(x.expression())) out.append("Expression: ").append(x.expression().strip()).append(". ");
+        else if (!ownNote && !ownPose) out.append(sided("Expression: " + d.face() + ". ", p.getSide()));
+        if (ownNote || ownPose || filled(x.expression())) {
+            out.append(TAKES.get(Math.floorMod(variant, TAKES.size()))).append(' ');
+        }
+        if (filled(x.holding())) out.append("She is holding ").append(x.holding().strip()).append(", with no readable brand or label. ");
+        if (filled(x.side())) out.append("Placing and direction: ").append(x.side().strip()).append(". ");
+        out.append(filled(x.framing()) ? "Framing: " + x.framing().strip() + ". " : framing(p.getFraming()));
+        out.append("Camera: ").append(filled(x.camera()) ? x.camera().strip() : d.camera()).append(". ");
+        out.append("Lighting: ").append(filled(x.light()) ? x.light().strip() : d.light()).append(". ");
+        return out + backdrop(p.getBackdropHex()) + QUALITY;
+    }
+
+    private static boolean filled(String s) {
+        return s != null && !s.isBlank();
     }
 
     /** Asked of Gemini's text model about the finished picture: where her face, eyes and pose are, for the layout. */

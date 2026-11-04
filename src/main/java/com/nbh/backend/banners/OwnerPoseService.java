@@ -47,6 +47,8 @@ public class OwnerPoseService {
     static final int MAX_REFERENCES = 3;
     /** Poses one request may make. */
     static final int MAX_PER_REQUEST = OwnerPosePrompts.VARIANTS;
+    /** How long one setting's own words may be. */
+    private static final int MAX_WORDS = 300;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final OwnerPhotoRepository photos;
@@ -97,14 +99,15 @@ public class OwnerPoseService {
 
     public record PoseView(UUID id, String mood, String framing, String side, String outfit, String backdropHex,
                            String edgeHex, String status, String imageUrl, String cutoutUrl, Integer width, Integer height, Layout layout,
-                           String note, String model, String createdBy, String approvedBy, java.time.Instant createdAt) {}
+                           String brief, String note, String model, String createdBy, String approvedBy, java.time.Instant createdAt) {}
 
     /** The library: the reference photos and every pose, newest first. */
     public record Library(List<PhotoView> photos, List<PoseView> poses) {}
 
     /** {@code count} 1 to 4; {@code note} an optional extra for Gemini ("holding a gel polish bottle"). */
     public record MakeRequest(String mood, String framing, String side, String outfit, String backdropHex,
-                              Integer count, String note) {}
+                              Integer count, String note, String expression, String camera, String light, String holding,
+                              Map<String, String> custom) {}
 
     public record AddPhoto(String imageUrl, String note) {}
 
@@ -135,6 +138,39 @@ public class OwnerPoseService {
         return library();
     }
 
+    private static String own(Map<String, String> custom, String key) {
+        String v = custom == null ? null : custom.get(key);
+        if (v == null || v.isBlank()) return null;
+        String tidy = v.strip();
+        return tidy.length() > MAX_WORDS ? tidy.substring(0, MAX_WORDS) : tidy;
+    }
+
+    /** A choice from the form, in words: the shop's own words win; a preset the form sends is already words. */
+    private static OwnerPosePrompts.Extras extras(MakeRequest in) {
+        Map<String, String> c = in.custom();
+        return new OwnerPosePrompts.Extras(in.note(), own(c, "mood"), first(own(c, "expression"), in.expression()),
+                first(own(c, "camera"), in.camera()), first(own(c, "light"), in.light()),
+                first(own(c, "holding"), in.holding()), own(c, "outfit"), own(c, "framing"), own(c, "side"));
+    }
+
+    private static String first(String mine, String preset) {
+        if (mine != null) return mine;
+        if (preset == null || preset.isBlank()) return null;
+        String tidy = preset.strip();
+        return tidy.length() > MAX_WORDS ? tidy.substring(0, MAX_WORDS) : tidy;
+    }
+
+    /** What staff asked for beyond the choices, kept with the pose so its card can say so. */
+    private static String summary(MakeRequest in) {
+        OwnerPosePrompts.Extras x = extras(in);
+        List<String> parts = new ArrayList<>();
+        if (in.note() != null && !in.note().isBlank()) parts.add(in.note().strip());
+        for (String v : java.util.Arrays.asList(x.pose(), x.expression(), x.holding(), x.outfit(), x.framing(), x.camera(), x.light(), x.side())) {
+            if (v != null) parts.add(v);
+        }
+        return parts.isEmpty() ? null : String.join(" · ", parts);
+    }
+
     /** Starts {@code count} poses in the background; each shows as "making" until it is ready or failed. */
     public Library make(MakeRequest in, String staff) {
         if (!config.geminiConfigured() || !cloudinary.configured()) {
@@ -154,7 +190,7 @@ public class OwnerPoseService {
                 // Always the green screen now: she is cut out of it, and the banner chooses its own colour.
                 p.setBackdropHex(PoseCutout.SCREEN_HEX);
                 p.setStatus(OwnerPose.Status.MAKING);
-                p.setBrief(in.note() == null || in.note().isBlank() ? null : in.note().strip());
+                p.setBrief(summary(in));
                 p.setModel(config.getPoseModel());
                 p.setCreatedBy(staff);
                 ids.add(poses.save(p).getId());
@@ -162,17 +198,18 @@ public class OwnerPoseService {
             return ids;
         });
         int first = ThreadLocalRandom.current().nextInt(OwnerPosePrompts.VARIANTS);
-        for (int i = 0; i < made.size(); i++) self.makeInBackground(made.get(i), first + i);
+        OwnerPosePrompts.Extras extras = extras(in);
+        for (int i = 0; i < made.size(); i++) self.makeInBackground(made.get(i), first + i, extras);
         return library();
     }
 
     @Async
-    public void makeInBackground(UUID poseId, int variant) {
-        makeNow(poseId, variant);
+    public void makeInBackground(UUID poseId, int variant, OwnerPosePrompts.Extras extras) {
+        makeNow(poseId, variant, extras);
     }
 
     /** The work itself (tests call it directly). */
-    void makeNow(UUID poseId, int variant) {
+    void makeNow(UUID poseId, int variant, OwnerPosePrompts.Extras extras) {
         record Job(OwnerPose pose, List<String> refs) {}
         Job job = tx.execute(s -> {
             OwnerPose p = poses.findById(poseId).orElse(null);
@@ -187,7 +224,7 @@ public class OwnerPoseService {
             for (String url : job.refs()) refs.add(images.download(url));
             if (refs.isEmpty()) throw new UnprocessableException("There is no photo of the owner to start from.");
             OwnerPose p = job.pose();
-            String prompt = OwnerPosePrompts.prompt(p, p.getBrief(), variant);
+            String prompt = OwnerPosePrompts.prompt(p, extras.note(), variant, extras);
             Image chosen = paint(p, refs, prompt);
             Optional<byte[]> alone = PoseCutout.cut(chosen.bytes());
             if (alone.isEmpty()) {
@@ -376,6 +413,10 @@ public class OwnerPoseService {
         String side = p.getSide().name();
         String facing = p.getSide() == OwnerPose.Side.LEFT ? "RIGHT" : "LEFT";
         return switch (p.getFraming()) {
+            case CLOSE -> new Layout(side, facing, "CLOSE", new Point(0.5, 0.42), new Box(0.2, 0.15, 0.6, 0.65),
+                    new Box(0.05, 0.05, 0.9, 0.9), 1, "BOTTOM", false);
+            case THIGH -> new Layout(side, facing, "THIGH", new Point(0.5, 0.19), new Box(0.35, 0.07, 0.28, 0.2),
+                    new Box(0.04, 0.02, 0.92, 0.65), 0.68, "BOTTOM", false);
             case HEAD -> new Layout(side, facing, "HEAD", new Point(0.5, 0.38), new Box(0.28, 0.12, 0.44, 0.5),
                     new Box(0.08, 0.04, 0.84, 0.9), 0.95, "BOTTOM", false);
             case WAIST -> new Layout(side, facing, "WAIST", new Point(0.5, 0.22), new Box(0.34, 0.08, 0.3, 0.24),
@@ -389,10 +430,18 @@ public class OwnerPoseService {
 
     // ---------------------------------------------------------------- helpers
 
+    /** A pose as the public shop gets it: only what draws her, not staff names, their prompts or the green original. */
+    static PoseView forShop(OwnerPose p) {
+        return new PoseView(p.getId(), p.getMood().name(), p.getFraming().name(), p.getSide().name(), p.getOutfit().name(),
+                p.getBackdropHex(), p.getEdgeHex(), p.getStatus().name(),
+                p.getCutoutUrl() != null ? p.getCutoutUrl() : p.getImageUrl(), p.getCutoutUrl(), p.getWidth(), p.getHeight(),
+                read(p.getLayout()), null, null, null, null, null, p.getCreatedAt());
+    }
+
     static PoseView view(OwnerPose p) {
         return new PoseView(p.getId(), p.getMood().name(), p.getFraming().name(), p.getSide().name(),
                 p.getOutfit().name(), p.getBackdropHex(), p.getEdgeHex(), p.getStatus().name(), p.getImageUrl(), p.getCutoutUrl(),
-                p.getWidth(), p.getHeight(), read(p.getLayout()), p.getNote(), p.getModel(), p.getCreatedBy(),
+                p.getWidth(), p.getHeight(), read(p.getLayout()), p.getBrief(), p.getNote(), p.getModel(), p.getCreatedBy(),
                 p.getApprovedBy(), p.getCreatedAt());
     }
 
