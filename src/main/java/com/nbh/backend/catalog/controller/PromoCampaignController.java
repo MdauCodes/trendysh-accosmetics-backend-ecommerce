@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -62,6 +63,12 @@ public class PromoCampaignController {
     public PromoCampaignDto setActive(@PathVariable UUID id, @RequestBody ActiveRequest request) {
         var c = service.setActive(id, request.isActive());
         return PromoCampaignDto.from(c, Instant.now(clock));
+    }
+
+    @DeleteMapping("/{id}")
+    @Transactional
+    public void delete(@PathVariable UUID id) {
+        service.delete(id);
     }
 
     public record CampaignRequest(

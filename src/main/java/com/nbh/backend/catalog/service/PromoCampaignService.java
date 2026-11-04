@@ -77,6 +77,22 @@ public class PromoCampaignService {
         return repository.save(campaign);
     }
 
+    /**
+     * Removes an old campaign for good (owner, 2026-11-04). Nothing else points at a campaign: an order keeps the prices it
+     * was sold at. One running right now is refused, so a sale can't vanish from the shop by a wrong press.
+     */
+    @Transactional
+    public void delete(UUID id) {
+        PromoCampaign campaign = repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("No campaign: " + id));
+        Instant now = Instant.now(clock);
+        boolean live = campaign.isActive() && !now.isBefore(campaign.getStartsAt()) && now.isBefore(campaign.getEndsAt());
+        if (live) {
+            throw new ConflictException("This campaign is running now. Turn it off first, then delete it.");
+        }
+        repository.delete(campaign);
+    }
+
     private void validate(String name, BigDecimal percentOff, Instant startsAt, Instant endsAt) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("A campaign needs a name");
