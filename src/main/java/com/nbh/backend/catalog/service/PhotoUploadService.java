@@ -19,7 +19,7 @@ public class PhotoUploadService {
 
     /** The folders the dashboard uploads into (product photos unless a screen says otherwise). */
     static final Set<String> FOLDERS = Set.of("trendysh/products", "trendysh/categories", "trendysh/professions",
-            "products", "promo-banners", "banners", "deals", "packages");
+            "products", "promo-banners", "banners", "deals", "packages", "owner-photos");
     static final int MAX_BYTES = 25 * 1024 * 1024;
 
     public record Stored(String url) {}

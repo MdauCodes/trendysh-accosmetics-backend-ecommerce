@@ -29,6 +29,15 @@ class PhotoUploadServiceTest {
         assertThat(service.store(JPEG, "trendysh/categories").url()).isEqualTo("https://img.example.test/o/trendysh/categories/x.jpg");
     }
 
+    /** The Owner poses screen sends her real photos here; it was left off the list and every upload got a 422. */
+    @Test
+    void theOwnersRealPhotosCanBeStored() {
+        when(storage.upload(any(), eq("owner-photos"), anyString()))
+                .thenReturn(new CloudinaryUploader.Uploaded("https://img.example.test/o/owner-photos/x.jpg", "owner-photos/x.jpg"));
+
+        assertThat(service.store(JPEG, "owner-photos").url()).isEqualTo("https://img.example.test/o/owner-photos/x.jpg");
+    }
+
     @Test
     void anythingElseIsRefusedBeforeItIsStored() {
         assertThatThrownBy(() -> service.store(JPEG, "../secrets")).isInstanceOf(UnprocessableException.class);
