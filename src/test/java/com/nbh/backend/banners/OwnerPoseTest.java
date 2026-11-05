@@ -174,12 +174,15 @@ class OwnerPoseTest {
     }
 
     @Test
-    void aHomeBannerWithAPoseNeedsNoSeparatePicture() {
-        PromoBanner b = new PromoBanner();
-        b.setPlacement(PromoBanner.Placement.HERO);
-        assertThat(PromoBannerService.missing(b, java.util.List.of(), true)).anyMatch(m -> m.contains("picture"));
-        b.setPoseId(java.util.UUID.randomUUID());
-        assertThat(PromoBannerService.missing(b, java.util.List.of(), true)).noneMatch(m -> m.contains("picture"));
+    void onlyThePhotoCardsNeedAPicture() {
+        for (PromoBanner.Placement place : PromoBanner.Placement.values()) {
+            PromoBanner b = new PromoBanner();
+            b.setPlacement(place);
+            boolean asked = PromoBannerService.missing(b, java.util.List.of(), true).stream().anyMatch(m -> m.contains("picture"));
+            boolean photoCard = place == PromoBanner.Placement.OFFER_CARD || place == PromoBanner.Placement.GRID_TILE
+                    || place == PromoBanner.Placement.CIRCLE;
+            assertThat(asked).as(place.name()).isEqualTo(photoCard);
+        }
     }
 
     @Test

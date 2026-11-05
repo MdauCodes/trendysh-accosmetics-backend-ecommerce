@@ -135,14 +135,14 @@ class PromoBannerIntegrationTest extends PhotoStudioTestContext {
         JsonNode b = create("HERO");
         String id = b.get("id").asText();
         assertThat(b.get("status").asText()).isEqualTo("DRAFT");
-        assertThat(b.get("missing").toString()).contains("choose a picture", "write a headline");
+        assertThat(b.get("missing").toString()).contains("write a headline").doesNotContain("picture");
 
         Instant now = Instant.now();
         b = ok(put("/api/v1/admin/promo-banners/" + id), edit("Glow for less", product, now.minus(1, ChronoUnit.HOURS),
                 now.plus(2, ChronoUnit.DAYS)));
         assertThat(b.get("offer").asText()).as("worked out from the featured deal").isEqualTo("Up to 20% off");
         assertThat(b.get("products").get(0).get("dealPrice").decimalValue()).isEqualByComparingTo("360");
-        assertThat(refused(post("/api/v1/admin/promo-banners/" + id + "/approve"), null)).contains("choose a picture");
+        assertThat(b.get("missing").toString()).as("a home banner may go without a picture").doesNotContain("picture");
 
         ok(post("/api/v1/admin/promo-banners/" + id + "/pictures/generate"), "{\"brief\":\"soft pink glam\",\"count\":2}");
         b = waitForPictures(id);

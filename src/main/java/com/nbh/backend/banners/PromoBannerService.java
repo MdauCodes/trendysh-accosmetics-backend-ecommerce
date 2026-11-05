@@ -624,6 +624,12 @@ public class PromoBannerService {
     }
 
     /** What a customer would miss, in staff's words; empty when it can be approved. */
+    /** Whether a banner in this place shows nothing right without a picture. */
+    static boolean needsPicture(PromoBanner.Placement placement) {
+        return placement == PromoBanner.Placement.OFFER_CARD || placement == PromoBanner.Placement.GRID_TILE
+                || placement == PromoBanner.Placement.CIRCLE;
+    }
+
     static List<String> missing(PromoBanner b, List<ProductCard> products) {
         return missing(b, products, false);
     }
@@ -631,9 +637,10 @@ public class PromoBannerService {
     /** {@code hasDeals}: a campaign's deals are its cards and its offer, so it needs no featured products. */
     static List<String> missing(PromoBanner b, List<ProductCard> products, boolean hasDeals) {
         List<String> out = new ArrayList<>();
-        // A home banner with the owner's pose has its picture: the campaign is drawn from the pose.
-        boolean posed = b.getPlacement() == PromoBanner.Placement.HERO && b.getPoseId() != null;
-        if (b.getImageUrl() == null && !posed) out.add("choose a picture or a pose of the owner");
+        // Only the photo cards need a picture (owner, 2026-11-06: some banners have none): the offers-row card, the grid
+        // tile and the category circle show a broken picture without one. The home banner, the strip and the category
+        // tile draw their own colour behind the words, as the preview shows.
+        if (b.getImageUrl() == null && needsPicture(b.getPlacement())) out.add("choose a picture");
         boolean circle = b.getPlacement() == PromoBanner.Placement.CIRCLE;
         if (circle && b.getCategoryId() == null) out.add("choose whose circle it is");
         if (!circle && (b.getHeadline() == null || b.getHeadline().isBlank())) out.add("write a headline");
