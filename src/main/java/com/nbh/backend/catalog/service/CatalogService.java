@@ -258,7 +258,7 @@ public class CatalogService {
                 // A deal picture staff chose, only while the product's own flash deal is live (not a site-wide campaign).
                 price.source() == EffectivePriceResolver.Source.PRODUCT_DEAL ? dealPhotoByVariant.get(v.getId()) : null,
                 recentByVariant.getOrDefault(v.getId(), BigDecimal.ZERO),
-                later(p.getUpdatedAt(), v.getUpdatedAt()), price.deal());
+                later(p.getUpdatedAt(), v.getUpdatedAt()), price.deal(), price.source().name());
     }
 
     /** Whether a card shows its wholesale tier: the shop's switch is on and no campaign deal rules it out. */

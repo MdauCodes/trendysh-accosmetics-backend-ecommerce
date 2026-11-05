@@ -109,18 +109,54 @@ public class PromoBannerService {
      * {@code headlineSize} S, M, L or XL (the largest the headline may be: it shrinks to fit its space); {@code align}
      * left or center (hero and strip); {@code shade} none, light or strong (behind the words); {@code font} sans, display,
      * condensed, rounded, modern or script (owner, 2026-11-05: more fonts); {@code weight} regular, bold or black;
-     * {@code caps} none or upper.
+     * {@code caps} none or upper. {@code parts}: each other group of words on its own (owner, 2026-11-05: "each group of
+     * text ... capable of being edited but on its own"): {@code subline}, {@code tag} (the campaign's name), {@code offer}
+     * (its badge) and {@code price} (the deal cards' prices), each with its own font, size, weight, capitals and colour.
      */
     public record Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
                         String backgroundColor, String buttonColor, String buttonTextColor, String font, String weight,
-                        String caps) {
+                        String caps, java.util.Map<String, Part> parts) {
 
         /** The look before weight and capitals could be chosen. */
         public Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
                      String backgroundColor, String buttonColor, String buttonTextColor, String font) {
             this(headlineColor, textColor, headlineSize, align, shade, backgroundColor, buttonColor, buttonTextColor, font,
-                    null, null);
+                    null, null, null);
         }
+
+        /** The look before each group of words had its own settings. */
+        public Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
+                     String backgroundColor, String buttonColor, String buttonTextColor, String font, String weight,
+                     String caps) {
+            this(headlineColor, textColor, headlineSize, align, shade, backgroundColor, buttonColor, buttonTextColor, font,
+                    weight, caps, null);
+        }
+
+        /** One group of words' own look, every part optional (null = the banner's usual). */
+        public record Part(String font, String size, String weight, String caps, String color) {}
+
+        static final java.util.List<String> PARTS = java.util.List.of("subline", "tag", "offer", "price");
+
+        private static java.util.Map<String, Part> parts(java.util.Map<String, Part> in) {
+            if (in == null || in.isEmpty()) return null;
+            java.util.Map<String, Part> out = new java.util.TreeMap<>();
+            in.forEach((key, p) -> {
+                String k = key == null ? "" : key.strip();
+                if (!PARTS.contains(k)) {
+                    throw new UnprocessableException("\"" + key + "\" isn't one of " + String.join(", ", PARTS) + ".");
+                }
+                if (p == null) return;
+                Part clean = new Part(oneOf(p.font(), FONTS), oneOf(p.size(), "S", "M", "L", "XL"),
+                        oneOf(p.weight(), "regular", "bold", "black"), oneOf(p.caps(), "none", "upper"), color(p.color()));
+                if (clean.font() != null || clean.size() != null || clean.weight() != null || clean.caps() != null
+                        || clean.color() != null) {
+                    out.put(k, clean);
+                }
+            });
+            return out.isEmpty() ? null : out;
+        }
+
+        private static final String[] FONTS = {"sans", "display", "condensed", "rounded", "modern", "script"};
 
         private static final java.util.regex.Pattern HEX = java.util.regex.Pattern.compile("^#[0-9a-fA-F]{6}$");
 
@@ -130,12 +166,12 @@ public class PromoBannerService {
             Style s = new Style(color(in.headlineColor), color(in.textColor),
                     oneOf(in.headlineSize, "S", "M", "L", "XL"), oneOf(in.align, "left", "center"),
                     oneOf(in.shade, "none", "light", "strong"), color(in.backgroundColor), color(in.buttonColor),
-                    color(in.buttonTextColor),
-                    oneOf(in.font, "sans", "display", "condensed", "rounded", "modern", "script"),
-                    oneOf(in.weight, "regular", "bold", "black"), oneOf(in.caps, "none", "upper"));
+                    color(in.buttonTextColor), oneOf(in.font, FONTS),
+                    oneOf(in.weight, "regular", "bold", "black"), oneOf(in.caps, "none", "upper"), parts(in.parts));
             boolean empty = s.headlineColor == null && s.textColor == null && s.headlineSize == null
                     && s.align == null && s.shade == null && s.backgroundColor == null && s.buttonColor == null
-                    && s.buttonTextColor == null && s.font == null && s.weight == null && s.caps == null;
+                    && s.buttonTextColor == null && s.font == null && s.weight == null && s.caps == null
+                    && s.parts == null;
             return empty ? null : s;
         }
 

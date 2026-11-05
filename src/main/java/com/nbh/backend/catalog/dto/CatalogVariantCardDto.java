@@ -101,7 +101,12 @@ public record CatalogVariantCardDto(
          * BUY_GET), the campaign's name and page, when it ends (null: while stock lasts) and, only when it is a handful
          * or fewer, how many are left at the deal. For % and amount deals {@code price} above is already the deal price.
          */
-        com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal
+        com.nbh.backend.catalog.service.LiveDeals.LiveDeal deal,
+        /**
+         * Where its price comes from (owner, 2026-11-05): PRODUCT_DEAL (a flash deal staff put on it), CAMPAIGN (the
+         * storewide %), CAMPAIGN_DEAL, or NONE. The shop's Flash Deals row shows staff's flash deals and any deal ending soon.
+         */
+        String dealSource
 ) {
     /** True for a variant name that adds no information beyond the product name itself. */
     public static boolean isMeaninglessName(String variantName) {
