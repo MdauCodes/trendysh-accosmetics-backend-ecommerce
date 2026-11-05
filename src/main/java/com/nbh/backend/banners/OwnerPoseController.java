@@ -39,6 +39,13 @@ public class OwnerPoseController {
         return poses.make(in, staff == null ? null : staff.getFullName());
     }
 
+    /** A picture staff uploaded themselves, used as a pose (owner, 2026-11-05). */
+    @PostMapping("/api/v1/admin/owner-poses/upload")
+    public OwnerPoseService.Library upload(@RequestBody OwnerPoseService.UploadRequest in,
+                                           @AuthenticationPrincipal StaffUser staff) {
+        return poses.upload(in, staff == null ? null : staff.getFullName());
+    }
+
     @PostMapping("/api/v1/admin/owner-poses/{id}/approve")
     public OwnerPoseService.PoseView approve(@PathVariable UUID id, @AuthenticationPrincipal StaffUser staff) {
         return poses.approve(id, staff == null ? null : staff.getFullName());

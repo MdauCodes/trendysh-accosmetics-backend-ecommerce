@@ -208,4 +208,32 @@ class OwnerPoseTest {
         assertThat(l.cropFloor()).isGreaterThanOrEqualTo(l.safeBox().y() + l.safeBox().h());
         assertThat(OwnerPoseService.read(OwnerPoseService.write(l))).isEqualTo(l);
     }
+
+    private static byte[] png(BufferedImage img) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", out);
+        return out.toByteArray();
+    }
+
+    @Test
+    void anUploadedPictureOnASeeThroughBackgroundIsUsedAsItIs() throws Exception {
+        BufferedImage cut = new BufferedImage(300, 400, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = cut.createGraphics();
+        g.setColor(new Color(0xE9, 0x1E, 0x8C));
+        g.fillRect(100, 100, 100, 300); // her, standing on the bottom edge; the rest stays see-through
+        g.dispose();
+        assertThat(PoseCutout.alreadyCut(png(cut))).isTrue();
+    }
+
+    @Test
+    void anUploadedPhotoWithAShopBehindHerIsNotTakenForACutOut() throws Exception {
+        assertThat(PoseCutout.alreadyCut(onScreen(0xC8, 0x15, 0x7A))).isFalse();
+        BufferedImage solid = new BufferedImage(300, 400, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = solid.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 300, 400); // a PNG that can be see-through but is not
+        g.dispose();
+        assertThat(PoseCutout.alreadyCut(png(solid))).isFalse();
+        assertThat(PoseCutout.alreadyCut(new byte[] {1, 2, 3})).isFalse();
+    }
 }

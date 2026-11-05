@@ -111,6 +111,13 @@ public class OwnerPoseService {
 
     public record AddPhoto(String imageUrl, String note) {}
 
+    /**
+     * A picture staff bring themselves (owner, 2026-11-05), already uploaded: who it shows is theirs to say, so nothing is
+     * painted. {@code side} LEFT or RIGHT (where she stands on a banner), {@code framing} as for a made pose, {@code note}
+     * what it is ("the director in the red suit").
+     */
+    public record UploadRequest(String imageUrl, String side, String framing, String note) {}
+
     // ---------------------------------------------------------------- the library
 
     public Library library() {
@@ -201,6 +208,85 @@ public class OwnerPoseService {
         OwnerPosePrompts.Extras extras = extras(in);
         for (int i = 0; i < made.size(); i++) self.makeInBackground(made.get(i), first + i, extras);
         return library();
+    }
+
+    /**
+     * Adds a picture staff uploaded as a pose. It is approved at once (a person chose it, so there is no likeness to
+     * check), then readied in the background: cut out (a PNG already on a see-through background is used as it is, a
+     * green-screen one is cut out, any other kept whole on its own background, which the banner then matches), and her
+     * face and hands measured as for a made pose.
+     */
+    public Library upload(UploadRequest in, String staff) {
+        if (in == null || in.imageUrl() == null || !in.imageUrl().strip().startsWith("https://")) {
+            throw new UnprocessableException("Upload a picture first.");
+        }
+        UUID id = tx.execute(s -> {
+            OwnerPose p = new OwnerPose();
+            p.setMood(OwnerPose.Mood.OWN);
+            p.setFraming(enumOf(OwnerPose.Framing.class, in.framing(), OwnerPose.Framing.WAIST));
+            p.setSide(enumOf(OwnerPose.Side.class, in.side(), OwnerPose.Side.LEFT));
+            p.setOutfit(OwnerPose.Outfit.OWN);
+            p.setBackdropHex("#FFFFFF");
+            p.setStatus(OwnerPose.Status.MAKING);
+            p.setImageUrl(in.imageUrl().strip());
+            p.setBrief(in.note() == null || in.note().isBlank() ? null
+                    : in.note().strip().substring(0, Math.min(in.note().strip().length(), MAX_WORDS)));
+            p.setModel(UPLOADED);
+            p.setCreatedBy(staff);
+            p.setApprovedBy(staff);
+            p.setApprovedAt(clock.instant());
+            return poses.save(p).getId();
+        });
+        self.readyUploadInBackground(id);
+        return library();
+    }
+
+    /** What an uploaded pose says in place of the image model that made it. */
+    static final String UPLOADED = "uploaded";
+
+    @Async
+    public void readyUploadInBackground(UUID poseId) {
+        readyUploadNow(poseId);
+    }
+
+    /** The work itself (tests call it directly). */
+    void readyUploadNow(UUID poseId) {
+        OwnerPose p = tx.execute(s -> poses.findById(poseId)
+                .filter(x -> x.getStatus() == OwnerPose.Status.MAKING).orElse(null));
+        if (p == null) return;
+        try {
+            Image picture = images.download(p.getImageUrl());
+            String cutout = null;
+            String edge = null;
+            if (PoseCutout.alreadyCut(picture.bytes())) {
+                cutout = p.getImageUrl();
+            } else {
+                Optional<byte[]> alone = PoseCutout.cut(picture.bytes());
+                if (alone.isPresent() && cloudinary.configured()) {
+                    cutout = cloudinary.upload(alone.get(), "owner-poses", "cutout-upload-" + clock.millis()).url();
+                } else {
+                    edge = measure(picture).edgeHex(); // kept whole: the banner matches its own background
+                }
+            }
+            Measured m = measure(picture);
+            Layout layout = layout(p, picture);
+            String cut = cutout;
+            String bg = edge;
+            tx.executeWithoutResult(s -> poses.findById(poseId).ifPresent(x -> {
+                x.setStatus(OwnerPose.Status.APPROVED);
+                x.setCutoutUrl(cut);
+                x.setEdgeHex(bg);
+                x.setWidth(m.width());
+                x.setHeight(m.height());
+                x.setLayout(write(layout));
+                x.setNote(cut == null
+                        ? "Kept on its own background, which the banner matches. A PNG with a see-through background, or one"
+                                + " on a green screen, lets her stand on any colour."
+                        : layout.measured() ? null : "Her face and hands couldn't be measured; the usual places are assumed.");
+            }));
+        } catch (RuntimeException e) {
+            fail(poseId, "The picture couldn't be read: " + e.getMessage());
+        }
     }
 
     @Async

@@ -69,6 +69,31 @@ final class PoseCutout {
         }
     }
 
+    /**
+     * Whether a picture is already cut out: it has see-through pixels, and its top and sides are nearly all see-through (a
+     * PNG staff made themselves). It is then used as it is.
+     */
+    static boolean alreadyCut(byte[] picture) {
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(picture));
+            if (img == null || !img.getColorModel().hasAlpha()) return false;
+            int w = img.getWidth(), h = img.getHeight();
+            int band = Math.max(2, Math.min(w, h) / 40);
+            long edge = 0, clear = 0;
+            int step = Math.max(1, Math.min(w, h) / 200);
+            for (int y = 0; y < h; y += step) {
+                for (int x = 0; x < w; x += step) {
+                    if (!(y < band || x < band || x >= w - band)) continue;
+                    edge++;
+                    if ((img.getRGB(x, y) >>> 24) < 64) clear++;
+                }
+            }
+            return edge > 0 && (double) clear / edge >= EDGE_GONE;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
     private static int alphaOf(int pixel) {
         int r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
         int above = g - Math.max(r, b);
