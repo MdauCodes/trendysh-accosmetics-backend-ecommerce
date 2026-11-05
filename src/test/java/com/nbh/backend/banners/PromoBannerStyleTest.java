@@ -22,8 +22,8 @@ class PromoBannerStyleTest {
         assertThat(s.shade()).isEqualTo("strong");
         assertThatThrownBy(() -> PromoBannerService.Style.clean(style("red", null, null, null)))
                 .isInstanceOf(UnprocessableException.class).hasMessageContaining("#C2185B");
-        assertThatThrownBy(() -> PromoBannerService.Style.clean(style(null, "XL", null, null)))
-                .isInstanceOf(UnprocessableException.class).hasMessageContaining("S, M, L");
+        assertThatThrownBy(() -> PromoBannerService.Style.clean(style(null, "XXL", null, null)))
+                .isInstanceOf(UnprocessableException.class).hasMessageContaining("S, M, L, XL");
     }
 
     @Test
@@ -42,5 +42,18 @@ class PromoBannerStyleTest {
         assertThat(PromoBannerService.readStyle(json)).isEqualTo(s);
         assertThat(PromoBannerService.readStyle("{not json")).isNull();
         assertThat(PromoBannerService.writeStyle(null)).isNull();
+    }
+
+    @Test
+    void moreFontsWeightAndCapitalsAreKept() {
+        PromoBannerService.Style s = PromoBannerService.Style.clean(new PromoBannerService.Style(null, null, "xl", null,
+                null, null, null, null, "Condensed", "BLACK", "upper"));
+        assertThat(s.headlineSize()).isEqualTo("XL");
+        assertThat(s.font()).isEqualTo("condensed");
+        assertThat(s.weight()).isEqualTo("black");
+        assertThat(s.caps()).isEqualTo("upper");
+        assertThat(PromoBannerService.readStyle(PromoBannerService.writeStyle(s))).isEqualTo(s);
+        assertThatThrownBy(() -> PromoBannerService.Style.clean(new PromoBannerService.Style(null, null, null, null, null,
+                null, null, null, "comic", null, null))).isInstanceOf(UnprocessableException.class);
     }
 }

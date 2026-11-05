@@ -106,11 +106,21 @@ public class PromoBannerService {
 
     /**
      * The advanced look (owner, 2026-10-31), every part optional (null = automatic): colours as "#rrggbb";
-     * {@code headlineSize} S, M or L; {@code align} left or center (hero and strip); {@code shade} none, light or strong
-     * (behind the words); {@code font} sans or display.
+     * {@code headlineSize} S, M, L or XL (the largest the headline may be: it shrinks to fit its space); {@code align}
+     * left or center (hero and strip); {@code shade} none, light or strong (behind the words); {@code font} sans, display,
+     * condensed, rounded, modern or script (owner, 2026-11-05: more fonts); {@code weight} regular, bold or black;
+     * {@code caps} none or upper.
      */
     public record Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
-                        String backgroundColor, String buttonColor, String buttonTextColor, String font) {
+                        String backgroundColor, String buttonColor, String buttonTextColor, String font, String weight,
+                        String caps) {
+
+        /** The look before weight and capitals could be chosen. */
+        public Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
+                     String backgroundColor, String buttonColor, String buttonTextColor, String font) {
+            this(headlineColor, textColor, headlineSize, align, shade, backgroundColor, buttonColor, buttonTextColor, font,
+                    null, null);
+        }
 
         private static final java.util.regex.Pattern HEX = java.util.regex.Pattern.compile("^#[0-9a-fA-F]{6}$");
 
@@ -118,12 +128,14 @@ public class PromoBannerService {
         static Style clean(Style in) {
             if (in == null) return null;
             Style s = new Style(color(in.headlineColor), color(in.textColor),
-                    oneOf(in.headlineSize, "S", "M", "L"), oneOf(in.align, "left", "center"),
+                    oneOf(in.headlineSize, "S", "M", "L", "XL"), oneOf(in.align, "left", "center"),
                     oneOf(in.shade, "none", "light", "strong"), color(in.backgroundColor), color(in.buttonColor),
-                    color(in.buttonTextColor), oneOf(in.font, "sans", "display"));
+                    color(in.buttonTextColor),
+                    oneOf(in.font, "sans", "display", "condensed", "rounded", "modern", "script"),
+                    oneOf(in.weight, "regular", "bold", "black"), oneOf(in.caps, "none", "upper"));
             boolean empty = s.headlineColor == null && s.textColor == null && s.headlineSize == null
                     && s.align == null && s.shade == null && s.backgroundColor == null && s.buttonColor == null
-                    && s.buttonTextColor == null && s.font == null;
+                    && s.buttonTextColor == null && s.font == null && s.weight == null && s.caps == null;
             return empty ? null : s;
         }
 
