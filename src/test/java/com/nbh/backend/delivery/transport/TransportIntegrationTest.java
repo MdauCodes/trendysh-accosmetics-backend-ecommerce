@@ -139,4 +139,30 @@ class TransportIntegrationTest {
     private String nameOf(UUID op) {
         return service.operatorsForStaff().stream().filter(o -> o.id().equals(op)).findFirst().orElseThrow().name();
     }
+
+    @Test
+    void outsideNairobiEachPlaceListsEveryProviderThatGoesThereCheapestFirst() {
+        String town = "Qa Town " + UUID.randomUUID().toString().substring(0, 5);
+        UUID bus = optionIn(java.util.List.of("OUTSIDE"));
+        UUID courier = optionIn(java.util.List.of("OUTSIDE"));
+        UUID metro = optionIn(java.util.List.of("METRO"));
+        UUID both = optionIn(java.util.List.of("METRO", "OUTSIDE"));
+        place(bus, town, "450", null);
+        place(courier, town + " Stage", "300", null);
+        place(metro, town, "100", null);
+        place(both, town, "200", "INSIDE");
+
+        var found = service.placesInArea("OUTSIDE").stream()
+                .filter(p -> p.name().toLowerCase().startsWith(town.toLowerCase())).toList();
+        assertThat(found).as("the same town under every provider is one place").hasSize(1);
+        assertThat(found.get(0).name()).isEqualTo(town);
+        assertThat(found.get(0).options()).extracting(TransportService.PlaceOption::operatorId)
+                .as("a Metro and a place kept for Nairobi customers are left out; the cheapest comes first")
+                .containsExactly(courier, bus);
+        assertThat(found.get(0).options().get(0).price()).isEqualByComparingTo("300");
+
+        var inside = service.placesInArea("INSIDE").stream()
+                .filter(p -> p.name().equalsIgnoreCase(town)).findFirst().orElseThrow();
+        assertThat(inside.options()).extracting(TransportService.PlaceOption::operatorId).containsExactly(metro, both);
+    }
 }

@@ -39,6 +39,12 @@ public class TransportController {
         return service.places(id, area);
     }
 
+    /** Every place in an area with the providers that go there and their prices (the checkout's place-first list). */
+    @GetMapping("/api/v1/public/delivery/area-places")
+    public List<TransportService.AreaPlace> placesInArea(@RequestParam(defaultValue = "OUTSIDE") String area) {
+        return service.placesInArea(area);
+    }
+
     @GetMapping("/api/v1/admin/delivery/operators")
     @PreAuthorize("hasAnyAuthority('PERM_SETTINGS_MANAGE','PERM_ORDER_MANAGE_ALL')")
     public List<TransportService.StaffOperatorDto> staffOperators() {

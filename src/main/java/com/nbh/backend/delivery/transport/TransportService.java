@@ -85,6 +85,13 @@ public class TransportService {
         }
     }
 
+    /** One provider that goes to a place, and its price there: what a customer picks after choosing the place. */
+    public record PlaceOption(UUID operatorId, String operatorName, String operatorAreas, UUID placeId, BigDecimal price,
+                              boolean fareConfirmed) {}
+
+    /** A place customers in an area can choose, and every provider that goes there, cheapest first. */
+    public record AreaPlace(String name, List<PlaceOption> options) {}
+
     /** What an order carries from the shopper's Metro choice: the operator, the tidied location and its likely fare. */
     public record Resolved(UUID operatorId, String operatorName, String stopName, BigDecimal fareMin, BigDecimal fareMax) {}
 
@@ -153,6 +160,48 @@ public class TransportService {
         return stops.pricedFor(operatorId).stream()
                 .filter(s -> !split || s.getArea() == null || s.getArea().equals(area))
                 .map(StopDto::from).toList();
+    }
+
+    /**
+     * Every place a customer in {@code area} (INSIDE or OUTSIDE Nairobi and Kiambu) can choose, each with the providers
+     * that go there and their prices (owner, 6 Nov 2026: outside Nairobi a customer picks the town first, then sees each
+     * courier or bus and its price). A place is the same place under every provider by its name's key ("Nakuru Stage" is
+     * "Nakuru"). A provider listed in both areas offers only its places of this area (or of both).
+     */
+    @Transactional(readOnly = true)
+    public List<AreaPlace> placesInArea(String area) {
+        String a = "INSIDE".equals(area) ? "INSIDE" : "OUTSIDE";
+        java.util.Map<String, java.util.List<TransportStop>> byKey = new java.util.HashMap<>();
+        for (TransportStop s : stops.pricedForShoppers()) {
+            TransportOperator o = s.getOperator();
+            boolean listedHere = "OUTSIDE".equals(a)
+                    ? o.getSections().contains("OUTSIDE")
+                    : o.getSections().contains("METRO") || o.getSections().contains("RIDER");
+            if (!listedHere) continue;
+            if (o.inBothAreas() && s.getArea() != null && !s.getArea().equals(a)) continue;
+            byKey.computeIfAbsent(s.getNameKey(), k -> new java.util.ArrayList<>()).add(s);
+        }
+        return byKey.values().stream()
+                .map(list -> {
+                    // the name most providers use, else the shortest ("Nakuru" over "Nakuru Main Stage")
+                    String name = list.stream().collect(java.util.stream.Collectors.groupingBy(
+                                    TransportStop::getName, java.util.stream.Collectors.counting()))
+                            .entrySet().stream()
+                            .max(java.util.Comparator.<java.util.Map.Entry<String, Long>>comparingLong(
+                                            java.util.Map.Entry::getValue)
+                                    .thenComparing(e -> -e.getKey().length()))
+                            .map(java.util.Map.Entry::getKey).orElse(list.get(0).getName());
+                    List<PlaceOption> options = list.stream()
+                            .sorted(java.util.Comparator.comparing(TransportStop::getFareMin)
+                                    .thenComparing(s -> -s.getOperator().getPicks())
+                                    .thenComparing(s -> s.getOperator().getName()))
+                            .map(s -> new PlaceOption(s.getOperator().getId(), s.getOperator().getName(),
+                                    s.getOperator().getAreas(), s.getId(), s.getFareMin(), s.isFareConfirmed()))
+                            .toList();
+                    return new AreaPlace(name, options);
+                })
+                .sorted(java.util.Comparator.comparing(p -> p.name().toLowerCase(java.util.Locale.ROOT)))
+                .toList();
     }
 
     /** The price of a place under a provider, at checkout. Null when that place is not this provider's or has no price. */
