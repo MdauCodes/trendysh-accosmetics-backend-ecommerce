@@ -77,8 +77,9 @@ public class PromoBannerService {
     public record Link(String type, UUID categoryId, String categorySlug, String categoryName, UUID variantId,
                        String productName) {}
 
+    /** {@code subjectSide}: where an AI picture's subject stands (LEFT, RIGHT, CENTRE), null when not known. */
     public record PictureView(UUID id, String source, String status, String imageUrl, String brief, String note,
-                              Instant createdAt) {}
+                              Instant createdAt, String subjectSide) {}
 
     /** Everything staff see and edit. {@code state}: DRAFT, SCHEDULED, LIVE, ENDED or PAUSED; {@code missing}: what stops approval. */
     public record AdminView(UUID id, String name, String placement, UUID categoryId, String categoryName, Link link,
@@ -87,13 +88,15 @@ public class PromoBannerService {
                             String imageUrl, int focusX, int focusY, Instant startsAt, Instant endsAt, int sortOrder,
                             String status, String state, List<ProductCard> products, List<PictureView> pictures,
                             List<String> missing, String createdBy, String approvedBy, Instant approvedAt,
-                            Instant updatedAt, Style style, CampaignDealService.CampaignAdmin campaign) {}
+                            Instant updatedAt, Style style, CampaignDealService.CampaignAdmin campaign,
+                            String imageSide) {}
 
     /** What the shop draws. */
     public record PublicView(UUID id, String placement, UUID categoryId, String categorySlug, Link link,
                              String headline, String subline, String ctaLabel, String offer, Instant countdownEndsAt,
                              Theme theme, String textTone, String imageUrl, int focusX, int focusY,
-                             List<ProductCard> products, Style style, CampaignDealService.CampaignPublic campaign) {}
+                             List<ProductCard> products, Style style, CampaignDealService.CampaignPublic campaign,
+                             String imageSide) {}
 
     public record NewBanner(String name, String placement) {}
 
@@ -613,13 +616,33 @@ public class PromoBannerService {
         Map<UUID, CampaignDealService.CampaignPublic> sides = campaigns == null ? Map.of() : campaigns.forShop(on);
         Context c = context();
         Map<UUID, List<ProductCard>> featured = products(on.stream().map(PromoBanner::getId).toList());
+        Map<UUID, String> imageSides = imageSides(on.stream().map(PromoBanner::getId).toList());
         return on.stream().map(b -> {
             List<ProductCard> cards = featured.getOrDefault(b.getId(), List.of());
             return new PublicView(b.getId(), b.getPlacement().name(), b.getCategoryId(),
                     c.slugs().get(b.getCategoryId()), link(b, c), b.getHeadline(), b.getSubline(), b.getCtaLabel(),
                     offer(b, cards), countdown(b, cards), theme(b, c), b.getTextTone(), b.getImageUrl(), b.getFocusX(),
-                    b.getFocusY(), cards, readStyle(b.getStyle()), sides.get(b.getId()));
+                    b.getFocusY(), cards, readStyle(b.getStyle()), sides.get(b.getId()), imageSides.get(b.getId()));
         }).toList();
+    }
+
+    /**
+     * Where the subject of each banner's picture in use stands (V100), from the AI picture it was chosen from; a banner
+     * whose picture was uploaded, is a product photo or was made before then is left out.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<UUID, String> imageSides(List<UUID> ids) {
+        Map<UUID, String> out = new HashMap<>();
+        if (ids.isEmpty()) return out;
+        for (Object[] row : (List<Object[]>) em.createNativeQuery("""
+                SELECT CAST(b.id AS VARCHAR), MIN(p.subject_side)
+                FROM promo_banner b JOIN promo_banner_picture p ON p.banner_id = b.id AND p.image_url = b.image_url
+                WHERE b.id IN (:ids) AND p.subject_side IS NOT NULL
+                GROUP BY b.id
+                """).setParameter("ids", ids).getResultList()) {
+            out.put(UUID.fromString((String) row[0]), (String) row[1]);
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- reading
@@ -647,8 +670,11 @@ public class PromoBannerService {
         List<ProductCard> cards = products(List.of(b.getId())).getOrDefault(b.getId(), List.of());
         List<PictureView> pics = pictures.findByBannerIdOrderByCreatedAtDesc(b.getId()).stream()
                 .map(p -> new PictureView(p.getId(), p.getSource().name(), p.getStatus().name(), p.getImageUrl(),
-                        p.getBrief(), p.getNote(), p.getCreatedAt()))
+                        p.getBrief(), p.getNote(), p.getCreatedAt(), p.getSubjectSide()))
                 .toList();
+        String imageSide = b.getImageUrl() == null ? null : pics.stream()
+                .filter(p -> b.getImageUrl().equals(p.imageUrl()) && p.subjectSide() != null)
+                .map(PictureView::subjectSide).findFirst().orElse(null);
         return new AdminView(b.getId(), b.getName(), b.getPlacement().name(), b.getCategoryId(),
                 c.categoryNames().get(b.getCategoryId()), link(b, c), b.getHeadline(), b.getSubline(), b.getCtaLabel(),
                 b.getOfferMode().name(), b.getOfferText(), offer(b, cards), b.isShowCountdown(), countdown(b, cards),
@@ -656,7 +682,7 @@ public class PromoBannerService {
                 b.getEndsAt(), b.getSortOrder(), b.getStatus().name(), state(b, c.now()), cards, pics,
                 missing(b, cards, campaigns != null && campaigns.hasAnyDeal(b.getId())),
                 b.getCreatedBy(), b.getApprovedBy(), b.getApprovedAt(), b.getUpdatedAt(), readStyle(b.getStyle()),
-                campaigns == null ? null : campaigns.forStaff(b));
+                campaigns == null ? null : campaigns.forStaff(b), imageSide);
     }
 
     static String state(PromoBanner b, Instant now) {

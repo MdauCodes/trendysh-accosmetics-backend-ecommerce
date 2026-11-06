@@ -37,4 +37,8 @@ public class PromoBannerPicture extends BaseEntity {
 
     @Column(columnDefinition = "TEXT")
     private String note;
+
+    /** Where an AI picture's subject was made to stand: LEFT, RIGHT or CENTRE; null when not known (V100). */
+    @Column(name = "subject_side", length = 8)
+    private String subjectSide;
 }

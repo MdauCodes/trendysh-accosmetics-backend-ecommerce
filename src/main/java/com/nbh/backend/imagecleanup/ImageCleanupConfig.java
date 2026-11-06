@@ -28,6 +28,12 @@ public class ImageCleanupConfig {
      */
     private String poseModel = "gemini-3-pro-image";
     /**
+     * The size banner pictures are asked for ("1K", "2K", "4K"; blank for the model's usual one). 4K by default (owner,
+     * 2026-11-06): a phone shows only a slice of a wide picture, so it needs the larger one to stay sharp. Each 4K picture
+     * costs more than a 2K one. GEMINI_BANNER_IMAGE_SIZE.
+     */
+    private String bannerImageSize = "4K";
+    /**
      * The text model that writes product descriptions (same API key as the photo editing). gemini-2.5-flash was
      * closed to new users (404 "no longer available", 2026-10-10); Google named gemini-3.8-flash as its replacement.
      * Overridable with GEMINI_DESCRIPTION_MODEL so the next retirement needs a setting, not a release.

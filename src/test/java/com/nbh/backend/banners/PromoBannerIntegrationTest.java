@@ -148,10 +148,13 @@ class PromoBannerIntegrationTest extends PhotoStudioTestContext {
         b = waitForPictures(id);
         assertThat(b.get("pictures")).hasSize(2);
         assertThat(b.get("pictures").get(0).get("status").asText()).isEqualTo("READY");
-        verify(gemini, times(2)).edit(any(), any(), anyList(), contains("soft pink glam"), eq("21:9"), eq("2K"));
+        verify(gemini, times(2)).edit(any(), any(), anyList(), contains("soft pink glam"), eq("21:9"), eq("4K"));
+        assertThat(b.get("pictures").get(0).get("subjectSide").asText())
+                .as("a home banner without deal cards has its subject on the right").isEqualTo("RIGHT");
         String pictureId = b.get("pictures").get(0).get("id").asText();
         b = ok(post("/api/v1/admin/promo-banners/" + id + "/pictures/" + pictureId + "/choose"), null);
         assertThat(b.get("imageUrl").asText()).startsWith("https://res.cloudinary.com/demo/promo-hero-");
+        assertThat(b.get("imageSide").asText()).as("the picture in use says where its subject is").isEqualTo("RIGHT");
         assertThat(b.get("missing")).isEmpty();
         assertThat(listed(ok(get("/api/v1/catalog/promo-banners"), null), id)).as("not before approval").isFalse();
 
@@ -159,6 +162,9 @@ class PromoBannerIntegrationTest extends PhotoStudioTestContext {
         assertThat(b.get("state").asText()).isEqualTo("LIVE");
         JsonNode live = ok(get("/api/v1/catalog/promo-banners"), null);
         assertThat(listed(live, id)).isTrue();
+        for (JsonNode shown : live) {
+            if (id.equals(shown.get("id").asText())) assertThat(shown.get("imageSide").asText()).isEqualTo("RIGHT");
+        }
 
         // changing what customers see takes it back to a draft, off the shop until approved again
         b = ok(put("/api/v1/admin/promo-banners/" + id), edit("Glow for even less", product,

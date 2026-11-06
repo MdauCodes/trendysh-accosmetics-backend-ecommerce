@@ -81,13 +81,14 @@ public class PromoPictureMaker {
             List<Image> refs = new ArrayList<>();
             for (String url : job.photoUrls()) refs.add(images.download(url));
             String prompt = PromoBannerPrompts.picture(job.brief());
-            // The model that keeps real products and people looking real, at 2K (owner, 2026-11-06: "quality is kept
-            // still top"); a model that refuses the size makes its usual one.
+            // The model that keeps real products and people looking real, at the banner size (4K by default, owner
+            // 2026-11-06: sharp on phones, which show only a slice of a wide picture); a model that refuses the size
+            // makes its usual one.
             Image picture = images.edit(config.getPoseModel(), refs.get(0), refs.subList(1, refs.size()), prompt,
-                    PromoBannerPrompts.aspectRatio(job.brief().placement()), "2K");
+                    PromoBannerPrompts.aspectRatio(job.brief().placement()), sizeOrNull(config.getBannerImageSize()));
             String url = cloudinary.upload(picture.bytes(), "promo-banners",
                     "promo-" + job.brief().placement().name().toLowerCase(Locale.ROOT) + "-" + clock.millis()).url();
-            finish(pictureId, url, null);
+            finish(pictureId, url, null, subjectSide(job.brief()));
         } catch (GeminiException e) {
             finish(pictureId, null, e.isQuotaExceeded()
                     ? "Gemini's limit for now is used up. Try again later. (" + e.getMessage() + ")" : e.getMessage());
@@ -201,11 +202,30 @@ public class PromoPictureMaker {
     }
 
     private void finish(UUID pictureId, String url, String failure) {
+        finish(pictureId, url, failure, null);
+    }
+
+    private void finish(UUID pictureId, String url, String failure, String subjectSide) {
         if (failure != null) log.warn("Banner picture {} failed: {}", pictureId, failure);
         tx.executeWithoutResult(s -> pictures.findById(pictureId).ifPresent(p -> {
             p.setStatus(url != null ? PromoBannerPicture.Status.READY : PromoBannerPicture.Status.FAILED);
             p.setImageUrl(url);
             p.setNote(failure);
+            p.setSubjectSide(url != null ? subjectSide : null);
         }));
+    }
+
+    /**
+     * Where the prompt put the subject of a wide (home or strip) picture, so the phone can show it (PromoBannerPrompts.layout:
+     * the deals' side for a campaign with cards, else the right). Null for the other places, whose subject is centred.
+     */
+    private static String sizeOrNull(String size) {
+        return size == null || size.isBlank() ? null : size.strip();
+    }
+
+    static String subjectSide(PromoBannerPrompts.Brief b) {
+        if (b.placement() != PromoBanner.Placement.HERO && b.placement() != PromoBanner.Placement.STRIP) return null;
+        if (!b.hasCards()) return "RIGHT";
+        return b.heroSide() == null ? "RIGHT" : b.heroSide();
     }
 }
