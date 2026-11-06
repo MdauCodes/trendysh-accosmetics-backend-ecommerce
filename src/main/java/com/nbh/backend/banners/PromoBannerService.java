@@ -378,7 +378,8 @@ public class PromoBannerService {
             throw new UnprocessableException("Gemini or photo storage is not set up, so pictures can't be made.");
         }
         int count = Math.max(1, Math.min(MAX_PER_GENERATE, in == null || in.count() == null ? 1 : in.count()));
-        String brief = in == null ? null : optional(in.brief(), 600);
+        // a whole hand-written prompt is welcome (owner, 2026-11-06); PromoBannerPrompts.direction keeps 1,500 characters
+        String brief = in == null ? null : optional(in.brief(), 1500);
         List<UUID> made = tx.execute(s -> {
             find(id);
             long making = pictures.findByBannerIdOrderByCreatedAtDesc(id).stream()

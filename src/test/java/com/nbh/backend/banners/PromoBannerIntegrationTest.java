@@ -54,7 +54,7 @@ class PromoBannerIntegrationTest extends PhotoStudioTestContext {
         reset(gemini, cloudinary);
         when(cloudinary.configured()).thenReturn(true);
         when(gemini.download(anyString())).thenReturn(new GeminiImageClient.Image(new byte[]{1}, "image/png"));
-        when(gemini.edit(any(), anyList(), anyString(), anyString()))
+        when(gemini.edit(any(), any(), anyList(), anyString(), anyString(), any()))
                 .thenReturn(new GeminiImageClient.Image(new byte[]{2}, "image/png"));
         when(cloudinary.upload(any(), anyString(), anyString())).thenAnswer(inv -> new CloudinaryUploader.Uploaded(
                 "https://res.cloudinary.com/demo/" + inv.getArgument(2) + ".png", "promo/" + inv.getArgument(2)));
@@ -148,7 +148,7 @@ class PromoBannerIntegrationTest extends PhotoStudioTestContext {
         b = waitForPictures(id);
         assertThat(b.get("pictures")).hasSize(2);
         assertThat(b.get("pictures").get(0).get("status").asText()).isEqualTo("READY");
-        verify(gemini, times(2)).edit(any(), anyList(), contains("soft pink glam"), eq("21:9"));
+        verify(gemini, times(2)).edit(any(), any(), anyList(), contains("soft pink glam"), eq("21:9"), eq("2K"));
         String pictureId = b.get("pictures").get(0).get("id").asText();
         b = ok(post("/api/v1/admin/promo-banners/" + id + "/pictures/" + pictureId + "/choose"), null);
         assertThat(b.get("imageUrl").asText()).startsWith("https://res.cloudinary.com/demo/promo-hero-");
@@ -184,7 +184,7 @@ class PromoBannerIntegrationTest extends PhotoStudioTestContext {
         ok(put("/api/v1/admin/promo-banners/" + id), edit("Payday picks", product, now.plus(1, ChronoUnit.DAYS),
                 now.plus(3, ChronoUnit.DAYS)));
 
-        when(gemini.edit(any(), anyList(), anyString(), anyString())).thenThrow(new GeminiException("Gemini timed out.", false));
+        when(gemini.edit(any(), any(), anyList(), anyString(), anyString(), any())).thenThrow(new GeminiException("Gemini timed out.", false));
         ok(post("/api/v1/admin/promo-banners/" + id + "/pictures/generate"), "{\"count\":1}");
         JsonNode b = waitForPictures(id);
         assertThat(b.get("pictures").get(0).get("status").asText()).isEqualTo("FAILED");

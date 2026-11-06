@@ -28,7 +28,7 @@ import java.util.UUID;
 public class PromoPictureMaker {
 
     /** Real photos Gemini is shown, the first edited and the rest to match. */
-    private static final int MAX_REFERENCES = 3;
+    private static final int MAX_REFERENCES = 4;
 
     private final PromoBannerRepository banners;
     private final PromoBannerPictureRepository pictures;
@@ -38,10 +38,13 @@ public class PromoPictureMaker {
     private final EntityManager em;
     private final TransactionTemplate tx;
     private final Clock clock;
+    private final com.nbh.backend.imagecleanup.ImageCleanupConfig config;
 
     public PromoPictureMaker(PromoBannerRepository banners, PromoBannerPictureRepository pictures,
                              OccasionRepository occasions, GeminiImageClient images, CloudinaryUploader cloudinary,
-                             EntityManager em, PlatformTransactionManager transactions, Clock clock) {
+                             EntityManager em, PlatformTransactionManager transactions, Clock clock,
+                             com.nbh.backend.imagecleanup.ImageCleanupConfig config) {
+        this.config = config;
         this.banners = banners;
         this.pictures = pictures;
         this.occasions = occasions;
@@ -53,8 +56,7 @@ public class PromoPictureMaker {
     }
 
     /** What one picture is made from. */
-    record Job(PromoBanner.Placement placement, List<String> photoUrls, List<String> productNames, String brief,
-               String theme, String themeColor, int variant, String bannerName) {}
+    record Job(List<String> photoUrls, PromoBannerPrompts.Brief brief) {}
 
     @Async
     public void make(UUID pictureId) {
@@ -78,12 +80,13 @@ public class PromoPictureMaker {
         try {
             List<Image> refs = new ArrayList<>();
             for (String url : job.photoUrls()) refs.add(images.download(url));
-            String prompt = PromoBannerPrompts.picture(job.placement(), job.productNames(), job.brief(), job.theme(),
-                    job.themeColor(), job.variant());
-            Image picture = images.edit(refs.get(0), refs.subList(1, refs.size()), prompt,
-                    PromoBannerPrompts.aspectRatio(job.placement()));
+            String prompt = PromoBannerPrompts.picture(job.brief());
+            // The model that keeps real products and people looking real, at 2K (owner, 2026-11-06: "quality is kept
+            // still top"); a model that refuses the size makes its usual one.
+            Image picture = images.edit(config.getPoseModel(), refs.get(0), refs.subList(1, refs.size()), prompt,
+                    PromoBannerPrompts.aspectRatio(job.brief().placement()), "2K");
             String url = cloudinary.upload(picture.bytes(), "promo-banners",
-                    "promo-" + job.placement().name().toLowerCase(Locale.ROOT) + "-" + clock.millis()).url();
+                    "promo-" + job.brief().placement().name().toLowerCase(Locale.ROOT) + "-" + clock.millis()).url();
             finish(pictureId, url, null);
         } catch (GeminiException e) {
             finish(pictureId, null, e.isQuotaExceeded()
@@ -100,19 +103,41 @@ public class PromoPictureMaker {
         PromoBanner b = banners.findById(p.getBannerId()).orElseThrow();
         List<String> urls = new ArrayList<>();
         List<String> names = new ArrayList<>();
+        java.util.LinkedHashSet<String> categories = new java.util.LinkedHashSet<>();
+        // The featured products first, then the campaign's own deals (owner, 2026-11-06: a campaign has deals, not
+        // featured products, and its picture was refused "no product photo").
         for (Object[] row : (List<Object[]>) em.createNativeQuery("""
-                SELECT p.name || COALESCE(' (' || NULLIF(v.option_label, '') || ')', ''),
-                       (SELECT i.url FROM product_image i
-                         WHERE i.variant_id = v.id OR (i.variant_id IS NULL AND i.product_id = v.product_id)
-                         ORDER BY (i.variant_id IS NULL), i.is_primary DESC, i.sort_order LIMIT 1)
-                FROM promo_banner_product bp
-                JOIN product_variant v ON v.id = bp.variant_id
-                JOIN product p ON p.id = v.product_id
-                WHERE bp.banner_id = :b ORDER BY bp.position
+                SELECT name, url, cats FROM (
+                  SELECT 0 AS src, bp.position AS pos,
+                         p.name || COALESCE(' (' || NULLIF(v.option_label, '') || ')', '') AS name,
+                         (SELECT i.url FROM product_image i
+                           WHERE i.variant_id = v.id OR (i.variant_id IS NULL AND i.product_id = v.product_id)
+                           ORDER BY (i.variant_id IS NULL), i.is_primary DESC, i.sort_order LIMIT 1) AS url,
+                         (SELECT string_agg(DISTINCT c.name, ', ') FROM product_category pc JOIN category c ON c.id = pc.category_id
+                           WHERE pc.product_id = p.id) AS cats
+                  FROM promo_banner_product bp
+                  JOIN product_variant v ON v.id = bp.variant_id
+                  JOIN product p ON p.id = v.product_id
+                  WHERE bp.banner_id = :b
+                  UNION ALL
+                  SELECT 1, d.position, p.name,
+                         (SELECT i.url FROM product_image i
+                           WHERE (d.variant_id IS NOT NULL AND i.variant_id = d.variant_id) OR i.product_id = d.product_id
+                           ORDER BY (i.variant_id IS DISTINCT FROM d.variant_id), i.is_primary DESC, i.sort_order LIMIT 1),
+                         (SELECT string_agg(DISTINCT c.name, ', ') FROM product_category pc JOIN category c ON c.id = pc.category_id
+                           WHERE pc.product_id = p.id)
+                  FROM campaign_deal d
+                  JOIN product p ON p.id = d.product_id
+                  WHERE d.banner_id = :b
+                ) x ORDER BY src, pos
                 """).setParameter("b", b.getId()).getResultList()) {
-            if (row[1] instanceof String url && url.startsWith("http") && urls.size() < MAX_REFERENCES) {
+            if (row[1] instanceof String url && url.startsWith("http") && urls.size() < MAX_REFERENCES
+                    && !urls.contains(url)) {
                 urls.add(url);
                 names.add((String) row[0]);
+                if (row[2] instanceof String cats) {
+                    for (String cat : cats.split(",")) if (!cat.isBlank()) categories.add(cat.strip());
+                }
             }
         }
         if (urls.isEmpty()) {
@@ -129,14 +154,44 @@ public class PromoPictureMaker {
         }
         Occasion occasion = b.getOccasionId() == null ? null : occasions.findById(b.getOccasionId()).orElse(null);
         String theme = occasion == null ? null : occasion.getName();
-        // the shop's own pink when no occasion lends a colour
-        String color = occasion == null ? "#C2185B" : occasion.getColors().split(",")[0].strip();
+        // The banner's own colour as staff set it, else its occasion's, else the shop's pink.
+        CampaignDealService.Arrangement plan = CampaignDealService.readArrangement(b.getArrangement());
+        PromoBannerService.Style style = PromoBannerService.readStyle(b.getStyle());
+        String color = plan != null && plan.color() != null ? plan.color()
+                : style != null && style.backgroundColor() != null ? style.backgroundColor()
+                : occasion == null ? "#C2185B" : occasion.getColors().split(",")[0].strip();
+        // Where the picture shows clearly on a campaign: the place beside the words and cards (the pose's place).
+        List<String> order = plan != null && plan.laptop() != null && plan.laptop().order() != null
+                ? plan.laptop().order() : List.of("pose", "words", "cards");
+        String side = order.get(0).equals("pose") ? "LEFT" : order.get(order.size() - 1).equals("pose") ? "RIGHT" : "CENTRE";
+        Number dealCount = (Number) em.createNativeQuery("SELECT count(*) FROM campaign_deal WHERE banner_id = :b")
+                .setParameter("b", b.getId()).getSingleResult();
+        String deals = dealsLine(b.getId());
+        String idea = java.util.stream.Stream.of(b.getHeadline(), b.getSubline())
+                .filter(s -> s != null && !s.isBlank()).collect(java.util.stream.Collectors.joining(" — "));
         // this banner's how-many-th AI picture, so the pictures of one request each get a different look
         int variant = (int) pictures.findByBannerIdOrderByCreatedAtDesc(b.getId()).stream()
                 .filter(x -> x.getSource() == PromoBannerPicture.Source.AI && x.getCreatedAt() != null
                         && p.getCreatedAt() != null && x.getCreatedAt().isBefore(p.getCreatedAt()))
                 .count();
-        return new Job(b.getPlacement(), urls, names, p.getBrief(), theme, color, variant, b.getName());
+        return new Job(urls, new PromoBannerPrompts.Brief(b.getPlacement(), names, List.copyOf(categories), deals,
+                idea.isBlank() ? null : idea, theme, color, side, dealCount.longValue() > 0, p.getBrief(), variant));
+    }
+
+    /** The campaign's deals in a few words ("up to 20% off; buy 5 get 3 free"), for the mood only. */
+    @SuppressWarnings("unchecked")
+    private String dealsLine(UUID bannerId) {
+        List<String> parts = new ArrayList<>();
+        for (Object[] row : (List<Object[]>) em.createNativeQuery("""
+                SELECT deal_type, max(percent_off), max(amount_off), max(buy_qty), max(free_qty)
+                FROM campaign_deal WHERE banner_id = :b GROUP BY deal_type
+                """).setParameter("b", bannerId).getResultList()) {
+            String type = String.valueOf(row[0]);
+            if (type.equals("PERCENT") && row[1] != null) parts.add("up to " + ((Number) row[1]).intValue() + "% off");
+            else if (type.equals("AMOUNT") && row[2] != null) parts.add("up to KSh " + ((Number) row[2]).intValue() + " off");
+            else if (type.equals("BUY_GET") && row[3] != null) parts.add("buy " + row[3] + " get " + row[4] + " free");
+        }
+        return parts.isEmpty() ? null : String.join("; ", parts);
     }
 
     private static String first(List<?> rows) {
