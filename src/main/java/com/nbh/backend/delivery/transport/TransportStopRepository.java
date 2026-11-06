@@ -35,11 +35,12 @@ public interface TransportStopRepository extends JpaRepository<TransportStop, UU
      */
     @Modifying
     @Query(value = """
-            INSERT INTO transport_stop (id, operator_id, name, name_key, added_by)
-            VALUES (gen_random_uuid(), :operatorId, :name, :nameKey, 'CUSTOMER')
+            INSERT INTO transport_stop (id, operator_id, name, name_key, added_by, area)
+            VALUES (gen_random_uuid(), :operatorId, :name, :nameKey, 'CUSTOMER', :area)
             ON CONFLICT (operator_id, name_key) DO NOTHING
             """, nativeQuery = true)
-    int addIfNew(@Param("operatorId") UUID operatorId, @Param("name") String name, @Param("nameKey") String nameKey);
+    int addIfNew(@Param("operatorId") UUID operatorId, @Param("name") String name, @Param("nameKey") String nameKey,
+                 @Param("area") String area);
 
     @Modifying
     @Query("update TransportStop s set s.uses = s.uses + 1 where s.id = :id")

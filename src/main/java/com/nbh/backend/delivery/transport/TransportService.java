@@ -24,38 +24,70 @@ public class TransportService {
     /** How many locations a shopper is offered as they type. */
     static final int SUGGESTED = 8;
 
-    public record OperatorDto(UUID id, String name, String areas, String kind) {}
-
-    public record StopDto(UUID id, String name, BigDecimal fareMin, BigDecimal fareMax, boolean fareConfirmed) {
-        static StopDto from(TransportStop s) {
-            return new StopDto(s.getId(), s.getName(), s.getFareMin(), s.getFareMax(), s.isFareConfirmed());
+    /**
+     * {@code kind} is the first of {@code kinds}, every section the option is listed under (V98); {@code onRequest} ones are
+     * shown only to a customer who searches for them by name.
+     */
+    public record OperatorDto(UUID id, String name, String areas, String kind, List<String> kinds, boolean onRequest) {
+        static OperatorDto from(TransportOperator o) {
+            return new OperatorDto(o.getId(), o.getName(), o.getAreas(), o.getKind(), o.getSections(), o.isOnRequest());
         }
     }
 
-    public record StaffOperatorDto(UUID id, String name, String areas, boolean active, int sortOrder, int picks, String kind) {
+    /** {@code area}: INSIDE, OUTSIDE or null (both); it only matters while the option is in both areas (V98). */
+    public record StopDto(UUID id, String name, BigDecimal fareMin, BigDecimal fareMax, boolean fareConfirmed, String area) {
+        static StopDto from(TransportStop s) {
+            return new StopDto(s.getId(), s.getName(), s.getFareMin(), s.getFareMax(), s.isFareConfirmed(), s.getArea());
+        }
+    }
+
+    public record StaffOperatorDto(UUID id, String name, String areas, boolean active, int sortOrder, int picks, String kind,
+                                   List<String> kinds, boolean onRequest) {
         static StaffOperatorDto from(TransportOperator o) {
-            return new StaffOperatorDto(o.getId(), o.getName(), o.getAreas(), o.isActive(), o.getSortOrder(), o.getPicks(), o.getKind());
+            return new StaffOperatorDto(o.getId(), o.getName(), o.getAreas(), o.isActive(), o.getSortOrder(), o.getPicks(),
+                    o.getKind(), o.getSections(), o.isOnRequest());
         }
     }
 
     public record StaffStopDto(UUID id, String name, BigDecimal fareMin, BigDecimal fareMax, boolean fareConfirmed,
-                               int uses, boolean hidden, String addedBy) {
+                               int uses, boolean hidden, String addedBy, String area) {
         static StaffStopDto from(TransportStop s) {
             return new StaffStopDto(s.getId(), s.getName(), s.getFareMin(), s.getFareMax(), s.isFareConfirmed(),
-                    s.getUses(), s.isHidden(), s.getAddedBy());
+                    s.getUses(), s.isHidden(), s.getAddedBy(), s.getArea());
         }
     }
 
+    /**
+     * {@code kinds}: every section it is listed under, the first being its main one; moving it is giving other sections. A
+     * request with only {@code kind} (a dashboard from before V98) puts it in that one section. Both left out keeps it where
+     * it is, and {@code onRequest} left out keeps that as it is.
+     */
     public record SaveOperator(@NotBlank @Size(max = 80) String name, @Size(max = 300) String areas,
                                Boolean active, Integer sortOrder,
-                               @jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String kind) {
+                               @jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String kind,
+                               @Size(min = 1, max = 3)
+                               List<@jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String> kinds,
+                               Boolean onRequest) {
         public SaveOperator(String name, String areas, Boolean active, Integer sortOrder) {
-            this(name, areas, active, sortOrder, null);
+            this(name, areas, active, sortOrder, null, null, null);
+        }
+
+        public SaveOperator(String name, String areas, Boolean active, Integer sortOrder, String kind) {
+            this(name, areas, active, sortOrder, kind, null, null);
         }
     }
 
+    /**
+     * {@code area}: INSIDE, OUTSIDE, or BOTH for a place shown in either. Left out, a new place takes its option's area
+     * (both while the option is in both) and an existing place keeps its own.
+     */
     public record SaveStop(@NotBlank @Size(max = 120) String name,
-                           @DecimalMin("0") BigDecimal fareMin, @DecimalMin("0") BigDecimal fareMax, Boolean hidden) {}
+                           @DecimalMin("0") BigDecimal fareMin, @DecimalMin("0") BigDecimal fareMax, Boolean hidden,
+                           @jakarta.validation.constraints.Pattern(regexp = "INSIDE|OUTSIDE|BOTH") String area) {
+        public SaveStop(String name, BigDecimal fareMin, BigDecimal fareMax, Boolean hidden) {
+            this(name, fareMin, fareMax, hidden, null);
+        }
+    }
 
     /** What an order carries from the shopper's Metro choice: the operator, the tidied location and its likely fare. */
     public record Resolved(UUID operatorId, String operatorName, String stopName, BigDecimal fareMin, BigDecimal fareMax) {}
@@ -75,8 +107,7 @@ public class TransportService {
 
     @Transactional(readOnly = true)
     public List<OperatorDto> operatorsForShoppers() {
-        return operators.activeForShoppers().stream()
-                .map(o -> new OperatorDto(o.getId(), o.getName(), o.getAreas(), o.getKind())).toList();
+        return operators.activeForShoppers().stream().map(OperatorDto::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -101,7 +132,7 @@ public class TransportService {
         String key = TransportStops.key(name);
         TransportStop stop = stops.findByOperatorIdAndNameKey(operator.getId(), key).orElse(null);
         if (stop == null) {
-            stops.addIfNew(operator.getId(), name, key);
+            stops.addIfNew(operator.getId(), name, key, areaOf(operator));
             stop = stops.findByOperatorIdAndNameKey(operator.getId(), key).orElseThrow();
         }
         stops.countUse(stop.getId());
@@ -111,8 +142,21 @@ public class TransportService {
     /** Every place with a price under this provider: what a customer chooses from. */
     @Transactional(readOnly = true)
     public List<StopDto> places(UUID operatorId) {
-        if (operators.findById(operatorId).filter(TransportOperator::isActive).isEmpty()) return List.of();
-        return stops.pricedFor(operatorId).stream().map(StopDto::from).toList();
+        return places(operatorId, null);
+    }
+
+    /**
+     * The places a customer in {@code area} (INSIDE for Nairobi and Kiambu, OUTSIDE beyond them) chooses from. Only an option
+     * listed in both areas tells them apart: there a place of the other area is left out; anywhere else every place shows.
+     */
+    @Transactional(readOnly = true)
+    public List<StopDto> places(UUID operatorId, String area) {
+        TransportOperator operator = operators.findById(operatorId).filter(TransportOperator::isActive).orElse(null);
+        if (operator == null) return List.of();
+        boolean split = operator.inBothAreas() && ("INSIDE".equals(area) || "OUTSIDE".equals(area));
+        return stops.pricedFor(operatorId).stream()
+                .filter(s -> !split || s.getArea() == null || s.getArea().equals(area))
+                .map(StopDto::from).toList();
     }
 
     /** The price of a place under a provider, at checkout. Null when that place is not this provider's or has no price. */
@@ -151,7 +195,9 @@ public class TransportService {
         o.setAreas(body.areas() == null || body.areas().isBlank() ? null : body.areas().trim());
         if (body.active() != null) o.setActive(body.active());
         if (body.sortOrder() != null) o.setSortOrder(body.sortOrder());
-        if (body.kind() != null) o.setKind(body.kind());
+        if (body.kinds() != null) o.setSections(body.kinds());
+        else if (body.kind() != null) o.setSections(List.of(body.kind()));
+        if (body.onRequest() != null) o.setOnRequest(body.onRequest());
         return StaffOperatorDto.from(operators.save(o));
     }
 
@@ -182,7 +228,9 @@ public class TransportService {
         if (stopId == null) {
             s.setOperator(operator);
             s.setAddedBy("STAFF");
+            s.setArea(areaOf(operator));
         }
+        if (body.area() != null) s.setArea("BOTH".equals(body.area()) ? null : body.area());
         s.setName(name);
         s.setNameKey(key);
         s.setFareMin(body.fareMin());
@@ -190,5 +238,11 @@ public class TransportService {
         s.setFareConfirmed(body.fareMin() != null || body.fareMax() != null);
         if (body.hidden() != null) s.setHidden(body.hidden());
         return StaffStopDto.from(stops.save(s));
+    }
+
+    /** The area a new place of this option belongs to: its only one, or null (both) while it is listed in both. */
+    static String areaOf(TransportOperator operator) {
+        if (operator.inBothAreas()) return null;
+        return operator.getSections().contains("OUTSIDE") ? "OUTSIDE" : "INSIDE";
     }
 }

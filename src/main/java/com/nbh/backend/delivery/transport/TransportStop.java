@@ -50,4 +50,11 @@ public class TransportStop extends BaseEntity {
 
     @Column(name = "added_by", nullable = false, length = 10)
     private String addedBy = "CUSTOMER";
+
+    /**
+     * INSIDE (Nairobi and Kiambu) or OUTSIDE, null for both (V98). It only matters while its option is listed in both areas:
+     * a customer then sees the places of the area they chose.
+     */
+    @Column(length = 10)
+    private String area;
 }

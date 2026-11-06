@@ -34,8 +34,9 @@ public class TransportController {
     }
 
     @GetMapping("/api/v1/public/delivery/operators/{id}/places")
-    public List<TransportService.StopDto> places(@PathVariable UUID id) {
-        return service.places(id);
+    public List<TransportService.StopDto> places(@PathVariable UUID id,
+                                                 @RequestParam(required = false) String area) {
+        return service.places(id, area);
     }
 
     @GetMapping("/api/v1/admin/delivery/operators")
