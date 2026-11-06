@@ -72,7 +72,7 @@ class TransportIntegrationTest {
 
     private UUID optionIn(java.util.List<String> kinds) {
         return service.saveOperator(null, new TransportService.SaveOperator(
-                "QA Courier " + UUID.randomUUID().toString().substring(0, 6), "Everywhere", true, 5, null, kinds, null)).id();
+                "QA Courier " + UUID.randomUUID().toString().substring(0, 6), "Everywhere", true, 5, null, kinds)).id();
     }
 
     private void place(UUID op, String name, String price, String area) {
@@ -111,7 +111,7 @@ class TransportIntegrationTest {
         assertThat(service.stopsForStaff(op)).singleElement().satisfies(s -> assertThat(s.area()).isEqualTo("INSIDE"));
 
         var moved = service.saveOperator(op, new TransportService.SaveOperator(
-                nameOf(op), "Everywhere", true, 5, null, java.util.List.of("OUTSIDE"), null));
+                nameOf(op), "Everywhere", true, 5, null, java.util.List.of("OUTSIDE")));
         assertThat(moved.kind()).isEqualTo("OUTSIDE");
         assertThat(moved.kinds()).containsExactly("OUTSIDE");
         assertThat(placesFor(op, "OUTSIDE")).as("in one area, every place shows").containsExactly("Ruiru");
@@ -121,20 +121,6 @@ class TransportIntegrationTest {
 
         var kept = service.saveOperator(op, new TransportService.SaveOperator(nameOf(op), "Everywhere", true, 5));
         assertThat(kept.kinds()).as("no section given keeps it where it is").containsExactly("RIDER");
-    }
-
-    @Test
-    void anOptionOnRequestIsOfferedWithItsFlagAndPickupMtaaniIsOnRequest() {
-        UUID op = optionIn(java.util.List.of("METRO"));
-        service.saveOperator(op, new TransportService.SaveOperator(nameOf(op), null, true, 5, null, null, true));
-        assertThat(service.operatorsForShoppers()).filteredOn(o -> o.id().equals(op)).singleElement()
-                .satisfies(o -> assertThat(o.onRequest()).isTrue());
-        assertThat(service.operatorsForStaff()).filteredOn(o -> o.name().toLowerCase().startsWith("pickup mtaani"))
-                .isNotEmpty()
-                .allSatisfy(o -> {
-                    assertThat(o.onRequest()).isTrue();
-                    assertThat(o.active()).isTrue();
-                });
     }
 
     @Test

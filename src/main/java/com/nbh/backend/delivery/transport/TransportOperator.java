@@ -42,10 +42,6 @@ public class TransportOperator extends BaseEntity {
     @Column(nullable = false, length = 30)
     private String kinds = "METRO";
 
-    /** Offered only to a customer who searches for it by name (V98: Pickup Mtaani, which the client discourages). */
-    @Column(name = "on_request", nullable = false)
-    private boolean onRequest;
-
     /** The sections in the order they were set, the first being {@link #kind}. */
     public java.util.List<String> getSections() {
         return java.util.Arrays.stream(kinds.split(",")).map(String::trim).filter(k -> !k.isEmpty()).distinct().toList();

@@ -24,13 +24,10 @@ public class TransportService {
     /** How many locations a shopper is offered as they type. */
     static final int SUGGESTED = 8;
 
-    /**
-     * {@code kind} is the first of {@code kinds}, every section the option is listed under (V98); {@code onRequest} ones are
-     * shown only to a customer who searches for them by name.
-     */
-    public record OperatorDto(UUID id, String name, String areas, String kind, List<String> kinds, boolean onRequest) {
+    /** {@code kind} is the first of {@code kinds}, every section the option is listed under (V98). */
+    public record OperatorDto(UUID id, String name, String areas, String kind, List<String> kinds) {
         static OperatorDto from(TransportOperator o) {
-            return new OperatorDto(o.getId(), o.getName(), o.getAreas(), o.getKind(), o.getSections(), o.isOnRequest());
+            return new OperatorDto(o.getId(), o.getName(), o.getAreas(), o.getKind(), o.getSections());
         }
     }
 
@@ -42,10 +39,10 @@ public class TransportService {
     }
 
     public record StaffOperatorDto(UUID id, String name, String areas, boolean active, int sortOrder, int picks, String kind,
-                                   List<String> kinds, boolean onRequest) {
+                                   List<String> kinds) {
         static StaffOperatorDto from(TransportOperator o) {
             return new StaffOperatorDto(o.getId(), o.getName(), o.getAreas(), o.isActive(), o.getSortOrder(), o.getPicks(),
-                    o.getKind(), o.getSections(), o.isOnRequest());
+                    o.getKind(), o.getSections());
         }
     }
 
@@ -60,20 +57,19 @@ public class TransportService {
     /**
      * {@code kinds}: every section it is listed under, the first being its main one; moving it is giving other sections. A
      * request with only {@code kind} (a dashboard from before V98) puts it in that one section. Both left out keeps it where
-     * it is, and {@code onRequest} left out keeps that as it is.
+     * it is.
      */
     public record SaveOperator(@NotBlank @Size(max = 80) String name, @Size(max = 300) String areas,
                                Boolean active, Integer sortOrder,
                                @jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String kind,
                                @Size(min = 1, max = 3)
-                               List<@jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String> kinds,
-                               Boolean onRequest) {
+                               List<@jakarta.validation.constraints.Pattern(regexp = "METRO|RIDER|OUTSIDE") String> kinds) {
         public SaveOperator(String name, String areas, Boolean active, Integer sortOrder) {
-            this(name, areas, active, sortOrder, null, null, null);
+            this(name, areas, active, sortOrder, null, null);
         }
 
         public SaveOperator(String name, String areas, Boolean active, Integer sortOrder, String kind) {
-            this(name, areas, active, sortOrder, kind, null, null);
+            this(name, areas, active, sortOrder, kind, null);
         }
     }
 
@@ -197,7 +193,6 @@ public class TransportService {
         if (body.sortOrder() != null) o.setSortOrder(body.sortOrder());
         if (body.kinds() != null) o.setSections(body.kinds());
         else if (body.kind() != null) o.setSections(List.of(body.kind()));
-        if (body.onRequest() != null) o.setOnRequest(body.onRequest());
         return StaffOperatorDto.from(operators.save(o));
     }
 
