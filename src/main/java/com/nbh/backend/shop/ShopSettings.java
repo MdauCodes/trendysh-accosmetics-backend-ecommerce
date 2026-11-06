@@ -31,6 +31,13 @@ public class ShopSettings extends BaseEntity {
     private boolean sellWithoutStock = false;
 
     /**
+     * Sell regardless of stock (V101, owner 2026-11-07): while the stock records are not yet trusted, every option reads as
+     * available to customers and nothing they order is refused for stock; staff still see the real figures.
+     */
+    @Column(name = "sell_regardless_of_stock", nullable = false)
+    private boolean sellRegardlessOfStock = false;
+
+    /**
      * Wholesale prices on or off for the whole shop (V96, owner 2026-11-04). Off: no tier is charged or shown, but every
      * product keeps its tier, so switching back on brings them all back as they were.
      */

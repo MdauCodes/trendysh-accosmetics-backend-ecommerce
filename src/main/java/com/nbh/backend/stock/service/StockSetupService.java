@@ -40,8 +40,9 @@ public class StockSetupService {
     /** Stands in for an empty id list in a JPQL {@code IN} (it matches nothing). */
     private static final UUID NO_ID = new UUID(0L, 0L);
 
+    /** {@code sellRegardlessOfStock}: customers are never limited or shown stock (V101). */
     public record Summary(boolean sellWithoutStockEverywhere, long counted, long estimated, long withoutNumber,
-                          long notTracked, List<CategorySwitch> categories) {}
+                          long notTracked, List<CategorySwitch> categories, boolean sellRegardlessOfStock) {}
 
     public record CategorySwitch(UUID id, String name, UUID parentId, boolean sellWithoutStock) {}
 
@@ -85,7 +86,14 @@ public class StockSetupService {
                 .toList();
         return new Summary(shopSettings.get().isSellWithoutStock(), byBasis.getOrDefault(StockBasis.COUNTED, 0L),
                 byBasis.getOrDefault(StockBasis.ESTIMATED, 0L), byBasis.getOrDefault(StockBasis.NONE, 0L), notTracked,
-                categories);
+                categories, shopSettings.get().isSellRegardlessOfStock());
+    }
+
+    @Transactional
+    public void sellRegardlessOfStock(boolean on) {
+        ShopSettings settings = shopSettings.get();
+        settings.setSellRegardlessOfStock(on);
+        tellScreens();
     }
 
     @Transactional

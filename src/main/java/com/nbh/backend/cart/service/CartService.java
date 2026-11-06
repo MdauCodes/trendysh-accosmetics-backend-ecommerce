@@ -47,6 +47,10 @@ import java.util.UUID;
 @Service
 public class CartService {
 
+    /** What customers may order (V101, sell regardless of stock). Optional: hand-built tests read the real figures. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.stock.service.ShopperStock shopperStock;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CartService.class);
 
     /** Optional so the unit tests can build this service by hand (then refusals are not written down). */
@@ -328,7 +332,7 @@ public class CartService {
         for (CartItem i : cartItemRepository.findByCartId(cart.getId())) {
             if (!i.isFree() && !i.getVariant().isPackage()) paid.merge(i.getVariant().getId(), i.getQty(), BigDecimal::add);
         }
-        Map<UUID, BigDecimal> shelves = availabilityService.available(wanted.keySet());
+        Map<UUID, BigDecimal> shelves = (shopperStock != null ? shopperStock.available(wanted.keySet()) : availabilityService.available(wanted.keySet()));
         Map<UUID, ProductVariant> chosen = new HashMap<>();
         for (Map.Entry<UUID, BigDecimal> e : wanted.entrySet()) {
             ProductVariant v = variantRepository.findById(e.getKey())
@@ -400,7 +404,7 @@ public class CartService {
                     .stream().filter(CartService::isPurchasable).filter(v -> deal.dealId().equals(dealOf(v))).toList();
             Map<UUID, BigDecimal> offered = new java.util.LinkedHashMap<>();
             options.forEach(v -> offered.put(v.getId(), paid.getOrDefault(v.getId(), BigDecimal.ZERO)));
-            Map<UUID, BigDecimal> shelves = availabilityService.available(offered.keySet());
+            Map<UUID, BigDecimal> shelves = (shopperStock != null ? shopperStock.available(offered.keySet()) : availabilityService.available(offered.keySet()));
             Map<UUID, BigDecimal> plan = FreePieces.plan(deal.buyQty(), deal.freeQty(), offered, freeNow, shelves);
             if (samePieces(plan, freeNow)) continue;
             BigDecimal before = FreePieces.sum(freeNow);
@@ -530,7 +534,7 @@ public class CartService {
         // Checkout still reserves each component and is the final word.
         BigDecimal available;
         if (!variant.isPackage()) {
-            available = availabilityService.available(variant.getId());
+            available = (shopperStock != null ? shopperStock.available(variant.getId()) : availabilityService.available(variant.getId()));
         } else if (picks.isEmpty()) {
             available = packageAvailability.wholePackagesAvailable(java.util.List.of(variant.getId()))
                     .getOrDefault(variant.getId(), BigDecimal.ZERO);
@@ -666,7 +670,7 @@ public class CartService {
                 shelfIds.add(line.getVariant().getId());
             }
         }
-        Map<UUID, BigDecimal> remaining = new HashMap<>(availabilityService.available(shelfIds));
+        Map<UUID, BigDecimal> remaining = new HashMap<>((shopperStock != null ? shopperStock.available(shelfIds) : availabilityService.available(shelfIds)));
 
         Map<UUID, BigDecimal> result = new HashMap<>();
         for (CartItem line : inOrder) {

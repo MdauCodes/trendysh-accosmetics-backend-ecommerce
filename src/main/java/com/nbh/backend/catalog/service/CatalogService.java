@@ -28,6 +28,10 @@ import java.util.stream.Collectors;
 @Service
 public class CatalogService {
 
+    /** What customers may order (V101, sell regardless of stock). Optional: hand-built tests read the real figures. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.stock.service.ShopperStock shopperStock;
+
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
     private final ProductImageRepository imageRepository;
@@ -283,9 +287,9 @@ public class CatalogService {
      */
     private Map<UUID, BigDecimal> availability(List<ProductVariant> variants) {
         List<UUID> ids = variants.stream().map(ProductVariant::getId).toList();
-        Map<UUID, BigDecimal> result = new HashMap<>(availabilityService.available(ids));
+        Map<UUID, BigDecimal> result = new HashMap<>((shopperStock != null ? shopperStock.available(ids) : availabilityService.available(ids)));
         List<UUID> packageVariantIds = variants.stream().filter(ProductVariant::isPackage).map(ProductVariant::getId).toList();
-        if (!packageVariantIds.isEmpty()) {
+        if (!packageVariantIds.isEmpty() && !(shopperStock != null && shopperStock.sellingRegardless())) {
             result.putAll(packageAvailability.wholePackagesAvailable(packageVariantIds));
         }
         return result;

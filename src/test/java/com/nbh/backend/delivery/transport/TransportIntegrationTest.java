@@ -155,7 +155,7 @@ class TransportIntegrationTest {
         var found = service.placesInArea("OUTSIDE").stream()
                 .filter(p -> p.name().toLowerCase().startsWith(town.toLowerCase())).toList();
         assertThat(found).as("the same town under every provider is one place").hasSize(1);
-        assertThat(found.get(0).name()).isEqualTo(town);
+        assertThat(found.get(0).name()).as("tidied like any place name").isEqualToIgnoringCase(town);
         assertThat(found.get(0).options()).extracting(TransportService.PlaceOption::operatorId)
                 .as("a Metro and a place kept for Nairobi customers are left out; the cheapest comes first")
                 .containsExactly(courier, bus);

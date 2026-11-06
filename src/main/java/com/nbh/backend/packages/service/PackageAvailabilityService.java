@@ -33,6 +33,10 @@ import java.util.stream.Collectors;
 @Service
 public class PackageAvailabilityService {
 
+    /** What customers may order (V101, sell regardless of stock). Optional: hand-built tests read the real figures. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.stock.service.ShopperStock shopperStock;
+
     private final PackageRepository packages;
     private final PackageComponentRepository componentRepository;
     private final StockAvailabilityService stockAvailability;
@@ -83,7 +87,7 @@ public class PackageAvailabilityService {
         if (parts.isEmpty()) {
             return BigDecimal.ZERO;
         }
-        Map<UUID, BigDecimal> onShelf = stockAvailability.available(
+        Map<UUID, BigDecimal> onShelf = shelf(
                 parts.stream().map(p -> p.variant().getId()).distinct().toList());
         return wholePackages(parts, onShelf::get);
     }
@@ -139,7 +143,7 @@ public class PackageAvailabilityService {
                 componentVariantIds.add(c.getComponentVariant().getId());
             }
         }
-        Map<UUID, BigDecimal> onShelf = stockAvailability.available(componentVariantIds);
+        Map<UUID, BigDecimal> onShelf = shelf(componentVariantIds);
 
         Map<UUID, BigDecimal> result = new HashMap<>();
         for (ProductPackage pkg : packageList) {
@@ -156,5 +160,10 @@ public class PackageAvailabilityService {
             return List.of();
         }
         return components.stream().filter(c -> PackageDtos.isComponentAvailable(c.getComponentVariant())).toList();
+    }
+
+    /** What customers may order of these options: the shopper reading when the shop provides it, else the real one. */
+    private Map<UUID, BigDecimal> shelf(java.util.Collection<UUID> ids) {
+        return shopperStock != null ? shopperStock.available(ids) : stockAvailability.available(ids);
     }
 }

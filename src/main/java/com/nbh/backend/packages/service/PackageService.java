@@ -57,6 +57,10 @@ import java.util.stream.Collectors;
 @Service
 public class PackageService {
 
+    /** What customers may order (V101, sell regardless of stock). Optional: hand-built tests read the real figures. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.stock.service.ShopperStock shopperStock;
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PackageRepository packages;
@@ -327,7 +331,7 @@ public class PackageService {
         Set<UUID> shelfIds = new HashSet<>();
         comps.forEach(c -> shelfIds.add(c.getComponentVariant().getId()));
         optionsByProduct.values().forEach(options -> options.forEach(v -> shelfIds.add(v.getId())));
-        Map<UUID, BigDecimal> onShelf = stockAvailability.available(shelfIds);
+        Map<UUID, BigDecimal> onShelf = (shopperStock != null ? shopperStock.available(shelfIds) : stockAvailability.available(shelfIds));
 
         Set<UUID> orderable = new HashSet<>();
         for (ProductPackage k : soldOut) {
@@ -417,7 +421,7 @@ public class PackageService {
                 options.forEach(v -> shelfIds.add(v.getId()));
             }
         }
-        Map<UUID, BigDecimal> onShelf = stockAvailability.available(shelfIds);
+        Map<UUID, BigDecimal> onShelf = (shopperStock != null ? shopperStock.available(shelfIds) : stockAvailability.available(shelfIds));
         PromoCampaign campaign = promoCampaigns.getActiveOrNull();
         // A pick keeps the package's discount as a share (see priceDelta): the same arithmetic the cart charges with.
         BigDecimal share = packageShare(priceOf(k.getVariant()), comps.stream()

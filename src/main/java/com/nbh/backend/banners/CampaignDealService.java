@@ -51,6 +51,10 @@ import java.util.UUID;
 @Service
 public class CampaignDealService implements LiveDeals {
 
+    /** What customers may order (V101, sell regardless of stock). Optional: hand-built tests read the real figures. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.stock.service.ShopperStock shopperStock;
+
     /** How long what is live is remembered. */
     private static final long MEMORY_MS = 20_000;
     /** "Only N left" is said at this many or fewer (the basket's low-stock figure). */
@@ -297,7 +301,7 @@ public class CampaignDealService implements LiveDeals {
         Map<UUID, List<ProductVariant>> sellable = sellableByProduct(productIds);
         Set<UUID> variantIds = new HashSet<>();
         sellable.values().forEach(vs -> vs.forEach(v -> variantIds.add(v.getId())));
-        Map<UUID, BigDecimal> available = new HashMap<>(availability.available(variantIds));
+        Map<UUID, BigDecimal> available = new HashMap<>((shopperStock != null ? shopperStock.available(variantIds) : availability.available(variantIds)));
 
         Map<UUID, List<Live>> byProduct = new HashMap<>();
         Set<UUID> bannersLive = new HashSet<>();

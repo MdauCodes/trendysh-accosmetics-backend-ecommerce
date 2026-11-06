@@ -36,6 +36,13 @@ public class StockSetupController {
     }
 
     @PreAuthorize("hasAuthority('PERM_STOCK_ADJUST')")
+    @PutMapping("/regardless")
+    public StockSetupService.Summary regardless(@RequestBody SwitchRequest request) {
+        setup.sellRegardlessOfStock(request.on());
+        return setup.summary();
+    }
+
+    @PreAuthorize("hasAuthority('PERM_STOCK_ADJUST')")
     @PutMapping("/everywhere")
     public StockSetupService.Summary everywhere(@RequestBody SwitchRequest request) {
         setup.sellWithoutStockEverywhere(request.on());

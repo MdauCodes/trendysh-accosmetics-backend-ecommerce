@@ -485,6 +485,39 @@ class StaffOrderIntegrationTest {
         assertThat(cartOk(get("/api/v1/cart"), null, session).get("items")).as("the basket is still open").hasSize(1);
     }
 
+    @Autowired private com.nbh.backend.shop.ShopSettingsRepository shopSettings;
+    @Autowired private com.nbh.backend.stock.service.ShopperStock shopperStock;
+    @Autowired private com.nbh.backend.stock.service.StockAvailabilityService stockAvailability;
+
+    private void sellRegardlessOfStock(boolean on) {
+        var settings = shopSettings.findFirstByOrderByCreatedAtAsc().orElseThrow();
+        settings.setSellRegardlessOfStock(on);
+        shopSettings.save(settings);
+    }
+
+    @Test
+    void sellingRegardlessOfStockNothingIsRefusedOrShownToCustomersAndStaffStillSeeTheRealFigure() throws Exception {
+        Fixture f = fixture();
+        UUID oil = UUID.fromString(f.oilId());
+        sellRegardlessOfStock(true);
+        try {
+            assertThat(shopperStock.available(oil)).as("a customer reads plenty, not the 20 counted")
+                    .isEqualByComparingTo(com.nbh.backend.stock.service.StockTrackingService.UNTRACKED_AVAILABLE);
+            assertThat(stockAvailability.available(oil)).as("staff keep the real figure").isEqualByComparingTo("20");
+
+            // 19 of a shelf of 20 ordered, then 5 more: the basket takes them and the order goes through
+            String other = basket(addBody(f.oilId(), 19, null));
+            placeOk(orderBody(other, "8550", phone()));
+            String more = basket(addBody(f.oilId(), 5, null));
+            JsonNode placed = placeOk(orderBody(more, "2250", phone()));
+            assertThat(placed.get("order").get("status").asText()).isEqualTo("PENDING_PAYMENT");
+            assertThat(stockAvailability.available(oil)).as("the first order still held what the shelf had")
+                    .isEqualByComparingTo("1");
+        } finally {
+            sellRegardlessOfStock(false);
+        }
+    }
+
     // ---- who may enter an order ----
 
     @Test

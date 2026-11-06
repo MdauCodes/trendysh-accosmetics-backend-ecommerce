@@ -72,6 +72,14 @@ public class CheckoutService {
     /** Optional so the unit tests can build this service by hand (then every option is tracked). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.nbh.backend.stock.service.StockTrackingService stockTracking;
+
+    /** For "sell regardless of stock" (V101). Optional so hand-built tests need not provide it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.stock.service.ShopperStock shopperStock;
+
+    private boolean sellsRegardlessOfStock() {
+        return shopperStock != null && shopperStock.sellingRegardless();
+    }
     /** Optional for the same reason: a shopper refused for stock is written down for staff (V81). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.nbh.backend.stock.service.StockShortfallService shortfalls;
@@ -336,6 +344,11 @@ public class CheckoutService {
         for (ReservationTarget target : targets) {
             StockReservation reservation;
             if (untracked.contains(target.variant().getId())) {
+                reservation = null;
+            } else if (sellsRegardlessOfStock() && !shopperStock.canHold(target.variant().getId(), target.qty())) {
+                // Selling regardless of stock (V101): the records say there is not enough, but they are not trusted yet,
+                // so this line goes without a hold, as for an option not tracked. Asked before reserving: a refused hold
+                // would mark the whole order's transaction to be undone.
                 reservation = null;
             } else try {
                 reservation = reservationService.reserve(
