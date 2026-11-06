@@ -26,6 +26,35 @@ class PromoBannerStyleTest {
                 .isInstanceOf(UnprocessableException.class).hasMessageContaining("S, M, L, XL");
     }
 
+    private static PromoBannerService.Style withExtras(PromoBannerService.Style.Gradient g, PromoBannerService.Style phone,
+                                                       Integer focusX, Integer focusY) {
+        return new PromoBannerService.Style(null, null, "L", null, null, null, null, null, null, null, null, null, g, phone,
+                focusX, focusY);
+    }
+
+    @Test
+    void blendedColoursAndThePhonesOwnLookAreKept() {
+        var phone = withExtras(new PromoBannerService.Style.Gradient(java.util.List.of("#111111", "#c8157a"), "DOWN"),
+                null, 120, -5);
+        var s = PromoBannerService.Style.clean(withExtras(
+                new PromoBannerService.Style.Gradient(java.util.List.of("#0b5d3b", " #3a0b2c", "#F5B83D"), "centre"),
+                phone, 40, 40));
+        assertThat(s.gradient().colors()).containsExactly("#0B5D3B", "#3A0B2C", "#F5B83D");
+        assertThat(s.gradient().direction()).isEqualTo("centre");
+        assertThat(s.focusX()).as("only the phone keeps its own focus").isNull();
+        assertThat(s.phone().gradient().direction()).isEqualTo("down");
+        assertThat(s.phone().focusX()).isEqualTo(100);
+        assertThat(s.phone().focusY()).isEqualTo(0);
+        assertThat(s.phone().phone()).isNull();
+        assertThat(PromoBannerService.readStyle(PromoBannerService.writeStyle(s))).isEqualTo(s);
+        assertThat(PromoBannerService.Style.clean(withExtras(
+                new PromoBannerService.Style.Gradient(java.util.List.of("#111111"), null), null, null, null)).gradient())
+                .as("one colour is no blend").isNull();
+        assertThatThrownBy(() -> PromoBannerService.Style.clean(withExtras(new PromoBannerService.Style.Gradient(
+                java.util.List.of("#111111", "#222222", "#333333", "#444444"), null), null, null, null)))
+                .isInstanceOf(UnprocessableException.class);
+    }
+
     @Test
     void anEmptyLookIsTheAutomaticOne() {
         assertThat(PromoBannerService.Style.clean(style(null, " ", "", null))).isNull();

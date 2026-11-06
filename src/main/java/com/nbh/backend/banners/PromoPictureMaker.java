@@ -158,6 +158,8 @@ public class PromoPictureMaker {
         CampaignDealService.Arrangement plan = CampaignDealService.readArrangement(b.getArrangement());
         PromoBannerService.Style style = PromoBannerService.readStyle(b.getStyle());
         String color = plan != null && plan.color() != null ? plan.color()
+                : style != null && style.gradient() != null
+                        ? String.join(" fading into ", style.gradient().colors()) + " (a blend)"
                 : style != null && style.backgroundColor() != null ? style.backgroundColor()
                 : occasion == null ? "#C2185B" : occasion.getColors().split(",")[0].strip();
         // Where the picture shows clearly on a campaign: the place beside the words and cards (the pose's place).

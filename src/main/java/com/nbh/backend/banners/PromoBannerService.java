@@ -115,7 +115,22 @@ public class PromoBannerService {
      */
     public record Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
                         String backgroundColor, String buttonColor, String buttonTextColor, String font, String weight,
-                        String caps, java.util.Map<String, Part> parts) {
+                        String caps, java.util.Map<String, Part> parts, Gradient gradient, Style phone, Integer focusX,
+                        Integer focusY) {
+
+        /**
+         * Two or three colours fading into each other (owner, 2026-11-06), {@code direction} across, down, diagonal or
+         * centre (outward from the middle). It takes the place of the single background colour.
+         */
+        public record Gradient(java.util.List<String> colors, String direction) {}
+
+        /** The look before blended colours and the phone's own settings. */
+        public Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
+                     String backgroundColor, String buttonColor, String buttonTextColor, String font, String weight,
+                     String caps, java.util.Map<String, Part> parts) {
+            this(headlineColor, textColor, headlineSize, align, shade, backgroundColor, buttonColor, buttonTextColor, font,
+                    weight, caps, parts, null, null, null, null);
+        }
 
         /** The look before weight and capitals could be chosen. */
         public Style(String headlineColor, String textColor, String headlineSize, String align, String shade,
@@ -160,19 +175,42 @@ public class PromoBannerService {
 
         private static final java.util.regex.Pattern HEX = java.util.regex.Pattern.compile("^#[0-9a-fA-F]{6}$");
 
-        /** Only what the shop knows how to draw; null when nothing is left (the automatic look). */
+        /**
+         * Only what the shop knows how to draw; null when nothing is left (the automatic look). {@code phone} holds what
+         * a phone draws differently (owner, 2026-11-06: "settings for mobile view independent to those of the desktop"):
+         * the same choices plus where the picture is kept in view; anything it leaves out is the same as the desktop.
+         */
         static Style clean(Style in) {
+            return clean(in, true);
+        }
+
+        private static Style clean(Style in, boolean withPhone) {
             if (in == null) return null;
             Style s = new Style(color(in.headlineColor), color(in.textColor),
                     oneOf(in.headlineSize, "S", "M", "L", "XL"), oneOf(in.align, "left", "center"),
                     oneOf(in.shade, "none", "light", "strong"), color(in.backgroundColor), color(in.buttonColor),
                     color(in.buttonTextColor), oneOf(in.font, FONTS),
-                    oneOf(in.weight, "regular", "bold", "black"), oneOf(in.caps, "none", "upper"), parts(in.parts));
+                    oneOf(in.weight, "regular", "bold", "black"), oneOf(in.caps, "none", "upper"), parts(in.parts),
+                    gradient(in.gradient), withPhone ? clean(in.phone, false) : null,
+                    withPhone ? null : percent(in.focusX), withPhone ? null : percent(in.focusY));
             boolean empty = s.headlineColor == null && s.textColor == null && s.headlineSize == null
                     && s.align == null && s.shade == null && s.backgroundColor == null && s.buttonColor == null
                     && s.buttonTextColor == null && s.font == null && s.weight == null && s.caps == null
-                    && s.parts == null;
+                    && s.parts == null && s.gradient == null && s.phone == null && s.focusX == null && s.focusY == null;
             return empty ? null : s;
+        }
+
+        private static Gradient gradient(Gradient in) {
+            if (in == null || in.colors() == null) return null;
+            java.util.List<String> colors = in.colors().stream().map(Style::color).filter(java.util.Objects::nonNull).toList();
+            if (colors.size() > 3) throw new UnprocessableException("Blend at most three colours.");
+            if (colors.size() < 2) return null;
+            String direction = oneOf(in.direction(), "across", "down", "diagonal", "centre");
+            return new Gradient(colors, direction == null ? "across" : direction);
+        }
+
+        private static Integer percent(Integer v) {
+            return v == null ? null : Math.max(0, Math.min(100, v));
         }
 
         private static String color(String v) {
