@@ -319,7 +319,7 @@ public class CatalogService {
     @Transactional(readOnly = true)
     public List<CatalogCategoryDto> listCategories() {
         boolean demoOn = categoryRepository.demoDataOn();
-        return categoryRepository.findByIsPublishedTrueOrderBySortOrderAsc().stream()
+        return categoryRepository.findByIsPublishedTrueOrderBySortOrderAscNameAsc().stream()
                 .filter(c -> (c.getParent() == null && !c.isMockData()) || c.isMockData() == demoOn)
                 .map(CatalogCategoryDto::from)
                 .toList();

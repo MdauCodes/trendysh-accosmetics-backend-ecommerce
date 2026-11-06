@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface CategoryRepository extends JpaRepository<Category, UUID> {
-    List<Category> findByIsPublishedTrueOrderBySortOrderAsc();
+    List<Category> findByIsPublishedTrueOrderBySortOrderAscNameAsc();
 
     /** Demo data is "on" while any mock product is published — the one live signal every demo gate uses. */
     @Query("SELECT COUNT(mp) > 0 FROM Product mp WHERE mp.isMockData = true AND mp.isPublished = true")
