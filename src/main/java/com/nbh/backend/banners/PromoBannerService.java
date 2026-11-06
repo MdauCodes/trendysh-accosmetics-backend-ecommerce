@@ -450,8 +450,14 @@ public class PromoBannerService {
                     .filter(x -> x.getBannerId().equals(id))
                     .orElseThrow(() -> new NotFoundException("No such picture."));
             if (p.getStatus() == PromoBannerPicture.Status.MAKING) throw new UnprocessableException("It is still being made.");
+            // The picture in use may go too (owner, 2026-11-06): most banners can do without one now. The banner then shows
+            // its own colour, and like any change to what customers see it is approved again; a photo card that needs a
+            // picture says so in its checklist.
             if (Objects.equals(b.getImageUrl(), p.getImageUrl())) {
-                throw new UnprocessableException("This is the banner's picture; choose another one first.");
+                b.setImageUrl(null);
+                b.setFocusX((short) 50);
+                b.setFocusY((short) 50);
+                backToDraft(b);
             }
             pictures.delete(p);
         });
