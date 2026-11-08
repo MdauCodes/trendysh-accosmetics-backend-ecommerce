@@ -23,6 +23,9 @@ class StorefrontRebuildServiceTest {
     private final AtomicInteger calls = new AtomicInteger();
     private volatile int status = 200;
     private String base;
+    private volatile String coolifyMethod;
+    private volatile String coolifyAuth;
+    private volatile String coolifyQuery;
     private IntegrationSettingsService settings;
 
     @BeforeEach
@@ -33,6 +36,16 @@ class StorefrontRebuildServiceTest {
             calls.incrementAndGet();
             byte[] out = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+        render.createContext("/api/v1/deploy", exchange -> {
+            coolifyMethod = exchange.getRequestMethod();
+            coolifyAuth = exchange.getRequestHeaders().getFirst("Authorization");
+            coolifyQuery = exchange.getRequestURI().getQuery();
+            calls.incrementAndGet();
+            byte[] out = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, out.length);
             exchange.getResponseBody().write(out);
             exchange.close();
@@ -51,6 +64,42 @@ class StorefrontRebuildServiceTest {
         when(settings.get(IntegrationKey.STOREFRONT_DEPLOY_HOOK_URL)).thenReturn(hookUrl);
         when(settings.has(IntegrationKey.STOREFRONT_DEPLOY_HOOK_URL)).thenReturn(!hookUrl.isBlank());
         return new StorefrontRebuildService(settings, base);
+    }
+
+    private StorefrontRebuildService onCoolify(String renderHook) {
+        when(settings.get(IntegrationKey.STOREFRONT_DEPLOY_HOOK_URL)).thenReturn(renderHook);
+        when(settings.has(IntegrationKey.STOREFRONT_DEPLOY_HOOK_URL)).thenReturn(!renderHook.isBlank());
+        String deploy = "http://127.0.0.1:" + render.getAddress().getPort() + "/api/v1/deploy?uuid=site&force=true";
+        return new StorefrontRebuildService(settings, base, deploy, "DEPLOYKEY");
+    }
+
+    @Test
+    void onCoolifyTheButtonAsksItsDeployApiWithTheKeyAndNeedsNoHook() {
+        var svc = onCoolify("");
+        assertThat(svc.status().configured()).isTrue();
+        var result = svc.rebuild("manual", true);
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(coolifyMethod).isEqualTo("GET");
+        assertThat(coolifyAuth).isEqualTo("Bearer DEPLOYKEY");
+        assertThat(coolifyQuery).isEqualTo("uuid=site&force=true");
+        assertThat(result.lastOk()).isTrue();
+        assertThatThrownBy(() -> svc.rebuild("manual", true)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void coolifyWinsOverAnOldRenderHookAndARefusalNeverRepeatsTheKey() {
+        status = 401;
+        var svc = onCoolify(base + "srv-1?key=OLD");
+        var result = svc.rebuild("nightly", false);
+        assertThat(coolifyAuth).isEqualTo("Bearer DEPLOYKEY");
+        assertThat(result.lastOk()).isFalse();
+        assertThat(result.lastMessage()).contains("HTTP 401").doesNotContain("DEPLOYKEY").doesNotContain("uuid");
+    }
+
+    @Test
+    void theNightlyJobRunsOnCoolifyWithoutAHook() {
+        onCoolify("").nightly();
+        assertThat(calls.get()).isEqualTo(1);
     }
 
     @Test

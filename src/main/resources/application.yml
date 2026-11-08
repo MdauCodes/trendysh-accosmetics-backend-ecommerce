@@ -107,6 +107,10 @@ app:
   storefront:
     # Render's deploy hook for the storefront (can also be saved in Settings, Integrations). Blank = no rebuilds.
     deploy-hook-url: ${STOREFRONT_DEPLOY_HOOK_URL:}
+    # The site built by Coolify on this server (since 8 Nov 2026): its deploy address, e.g.
+    # http://coolify:8080/api/v1/deploy?uuid=<app>&force=true, and a deploy-only Coolify key. Both set = these win.
+    coolify-deploy-url: ${STOREFRONT_COOLIFY_DEPLOY_URL:}
+    coolify-token: ${STOREFRONT_COOLIFY_TOKEN:}
   live:
     # Storefront live updates (live.LiveStreams / LiveUpdateListener). All optional; these are the defaults.
     # Open connections allowed for anonymous visitors. Over this a visitor is told to retry in 1-3 minutes
