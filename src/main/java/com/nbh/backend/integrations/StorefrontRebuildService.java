@@ -125,14 +125,14 @@ public class StorefrontRebuildService {
         }
     }
 
-    /** Coolify's deploy API, with the deploy-only key; neither is ever logged or returned. */
+    /** Coolify's deploy API (a POST since Coolify 4.6), with the deploy-only key; neither is ever logged or returned. */
     private Status rebuildOnCoolify(String trigger, boolean throttle) {
         Instant now = Instant.now();
         refuseIfJustAsked(throttle, now);
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(coolifyToken);
         try {
-            http.exchange(coolifyDeployUrl, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            http.exchange(coolifyDeployUrl, HttpMethod.POST, new HttpEntity<>(headers), String.class);
             record(now, trigger, true, "The website host accepted the rebuild.");
         } catch (HttpStatusCodeException e) {
             record(now, trigger, false, "The website host answered HTTP " + e.getStatusCode().value()

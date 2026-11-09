@@ -79,7 +79,7 @@ class StorefrontRebuildServiceTest {
         assertThat(svc.status().configured()).isTrue();
         var result = svc.rebuild("manual", true);
         assertThat(calls.get()).isEqualTo(1);
-        assertThat(coolifyMethod).isEqualTo("GET");
+        assertThat(coolifyMethod).isEqualTo("POST");
         assertThat(coolifyAuth).isEqualTo("Bearer DEPLOYKEY");
         assertThat(coolifyQuery).isEqualTo("uuid=site&force=true");
         assertThat(result.lastOk()).isTrue();
