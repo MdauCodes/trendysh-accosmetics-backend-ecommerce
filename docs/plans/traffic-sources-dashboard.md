@@ -4,7 +4,10 @@ Owner's question (6 Nov 2026): how much traffic and revenue comes from each of t
 organic search, in a dashboard. Today the shop records none of it: Admin > Analytics shows paid revenue, orders and stock;
 no visit and no order says where the shopper came from. The only outside tag is the Google Ads one (conversions only).
 
-Status: planned, not built. Needs the owner's go-ahead (it is a database change: back up first).
+Status: built 9 Nov 2026 (owner: "work on this"; migration V102, back up before deploying). Differences from the plan
+below: the visitor id outlives a visit only when the shopper allowed cookies (owner: "remember the cookie consent");
+the tags stay in the address bar, because Google's tag reads gclid from it after the page loads; the "Where shoppers
+stop" funnel, trend chart and CSV export are left for later (the counts behind them are recorded).
 
 ## 1. What a visit is, and what it records
 
@@ -102,8 +105,8 @@ Endpoints: `POST /api/v1/public/visits` (rate-limited per address, no sign-in), 
 ## 7. Privacy
 
 - No personal data in a visit; the visitor id is random and stays on the shopper's browser; nothing leaves the shop's
-  servers. It does not depend on the cookie choice, because it sets no cookie and shares nothing; the privacy policy gets a
-  paragraph saying exactly this.
+  servers. The id is kept past one visit only after "Allow all"; with "Necessary only" (or no answer yet) each visit gets
+  a new one, so first touch equals last touch for those shoppers.
 - Staff and the admin pages are never counted.
 
 ## 8. Limits to say plainly

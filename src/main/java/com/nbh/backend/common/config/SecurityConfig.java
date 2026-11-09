@@ -82,6 +82,9 @@ public class SecurityConfig {
                     "/api/v1/payments/paybill-info",
                     // Storefront live hints and the delivery places/price comparison + suggestion form.
                     "/api/v1/public/events",
+                    // The website's visit records for the Sources report (bots and floods dropped there).
+                    "/api/v1/public/visits",
+                    "/api/v1/public/visits/**",
                     "/api/v1/public/delivery/**",
                     // Public storefront browse/search/reviews — read-only, only
                     // ever returns published products (CatalogService's javadoc).

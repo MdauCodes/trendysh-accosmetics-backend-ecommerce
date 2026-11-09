@@ -101,13 +101,43 @@ public class MerchantFeedService {
         String id = c.sku() != null && !c.sku().isBlank() && c.sku().length() <= 50 ? c.sku() : c.variantId().toString();
         String about = !blank(c.shortDescription()) ? c.shortDescription() : c.description();
         String text = plain(about);
-        return new Item(id, cut(c.displayName(), 150), cut(blank(text) ? c.displayName() : text, 5000),
+        return new Item(id, cut(c.displayName(), 150), cut(describe(c.displayName(), text, productType), 5000),
                 site + "/product/" + c.variantId() + "/", absolute(c.imageUrl(), site), c.inStock(),
                 sale ? c.originalPrice() : c.price(), sale ? c.price() : null, sale ? c.dealEndsAt() : null,
                 blank(c.brandName()) ? null : cut(c.brandName(), 70), gtin,
                 c.siblingCount() > 0 ? c.productId().toString() : null,
                 blank(c.optionColor()) ? null : cut(c.optionColor(), 100),
                 blank(c.optionSize()) ? null : cut(c.optionSize(), 100), productType);
+    }
+
+    /**
+     * The product's own words, or when it has none (or only repeats its name) a line naming what it is from its category.
+     * Google judges a product by its text; a bare "Nagaraku Premium Mild 041" (a lash, 2026-11-09) was taken for tobacco.
+     */
+    static String describe(String name, String text, String productType) {
+        String n = name == null ? "" : name.trim();
+        if (!blank(text) && !text.trim().equalsIgnoreCase(n)) return text;
+        String kind = null;
+        if (productType != null) {
+            String[] path = productType.split(" > ");
+            kind = path[path.length - 1].trim();
+        }
+        if (blank(kind)) return n + ". Beauty supplies from Trendysh Accosmetic, Nairobi, for salons and home use.";
+        return n + ". " + tidyKind(kind) + " from Trendysh Accosmetic, Nairobi: professional beauty supplies for salons and home use.";
+    }
+
+    /** "LASH GLUES AND REMOVERS" reads as "Lash glues and removers". */
+    private static String tidyKind(String kind) {
+        String k = kind.toLowerCase(java.util.Locale.ROOT);
+        return Character.toUpperCase(k.charAt(0)) + k.substring(1);
+    }
+
+    /** What the shopper pays, in four bands: delivery (KSh 350-400) weighs on the cheapest ones. */
+    static String priceBand(BigDecimal price) {
+        if (price.compareTo(BigDecimal.valueOf(500)) < 0) return "under-500";
+        if (price.compareTo(BigDecimal.valueOf(2000)) < 0) return "500-1999";
+        if (price.compareTo(BigDecimal.valueOf(10000)) < 0) return "2000-9999";
+        return "10000-plus";
     }
 
     /** "Lash supplies > Lash glue": the card's category and those above it, as the shop files it. */
@@ -179,6 +209,10 @@ public class MerchantFeedService {
             if (i.color() != null) tag(x, "g:color", i.color());
             if (i.size() != null) tag(x, "g:size", i.size());
             if (i.productType() != null) tag(x, "g:product_type", i.productType());
+            // For the ads (owner, 2026-11-09: put the deals first): label 0 says deal or not, label 1 the price band,
+            // so a Shopping campaign can bid on each group on its own.
+            tag(x, "g:custom_label_0", i.salePrice() != null ? "deal" : "regular");
+            tag(x, "g:custom_label_1", priceBand(i.salePrice() != null ? i.salePrice() : i.price()));
             x.append("</item>\n");
         }
         return x.append("</channel>\n</rss>\n").toString();

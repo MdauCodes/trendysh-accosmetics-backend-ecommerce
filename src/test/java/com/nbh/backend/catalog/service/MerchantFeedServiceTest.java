@@ -44,7 +44,10 @@ class MerchantFeedServiceTest {
                 .contains("<g:availability>in_stock</g:availability>")
                 .contains("<g:identifier_exists>no</g:identifier_exists>")
                 .contains("<g:item_group_id>group-1</g:item_group_id>")
-                .contains("Strong hold &amp; quick dry &lt;b&gt;glue&lt;/b&gt;");
+                .contains("Strong hold &amp; quick dry &lt;b&gt;glue&lt;/b&gt;")
+                // The ads bid on deals and price bands apart (owner, 2026-11-09); the band is what the shopper pays.
+                .contains("<g:custom_label_0>deal</g:custom_label_0>")
+                .contains("<g:custom_label_1>500-1999</g:custom_label_1>");
     }
 
     @Test
@@ -52,7 +55,28 @@ class MerchantFeedServiceTest {
         String xml = MerchantFeedService.render(List.of(item(new BigDecimal("240"), null, null, "5901234123457")), SITE, NOW);
         parse(xml);
         assertThat(xml).contains("<g:price>240.00 KES</g:price>").doesNotContain("sale_price")
-                .contains("<g:gtin>5901234123457</g:gtin>").doesNotContain("identifier_exists");
+                .contains("<g:gtin>5901234123457</g:gtin>").doesNotContain("identifier_exists")
+                .contains("<g:custom_label_0>regular</g:custom_label_0>")
+                .contains("<g:custom_label_1>under-500</g:custom_label_1>");
+    }
+
+    @Test
+    void priceBandsSplitWhereDeliveryStopsWeighing() {
+        assertThat(MerchantFeedService.priceBand(new BigDecimal("499.99"))).isEqualTo("under-500");
+        assertThat(MerchantFeedService.priceBand(new BigDecimal("500"))).isEqualTo("500-1999");
+        assertThat(MerchantFeedService.priceBand(new BigDecimal("2000"))).isEqualTo("2000-9999");
+        assertThat(MerchantFeedService.priceBand(new BigDecimal("10000"))).isEqualTo("10000-plus");
+    }
+
+    @Test
+    void aProductWithNoWordsOfItsOwnIsDescribedFromItsCategory() {
+        assertThat(MerchantFeedService.describe("Nagaraku Premium Mild 041", "Nagaraku Premium Mild 041",
+                "LASHES > LASH GLUES AND REMOVERS"))
+                .isEqualTo("Nagaraku Premium Mild 041. Lash glues and removers from Trendysh Accosmetic, Nairobi: "
+                        + "professional beauty supplies for salons and home use.");
+        assertThat(MerchantFeedService.describe("Knipper", null, null))
+                .isEqualTo("Knipper. Beauty supplies from Trendysh Accosmetic, Nairobi, for salons and home use.");
+        assertThat(MerchantFeedService.describe("Glue", "Strong hold glue", "LASHES")).isEqualTo("Strong hold glue");
     }
 
     @Test
