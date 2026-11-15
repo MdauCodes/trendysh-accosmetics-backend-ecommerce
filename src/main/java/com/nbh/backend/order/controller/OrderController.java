@@ -46,6 +46,9 @@ public class OrderController {
     private final OrderDetailService orderDetails;
     private final OrderDeliveryTermsService deliveryTerms;
     private final com.nbh.backend.order.service.OrderReceivedCheckService receivedChecks;
+    /** Where each order came from; optional so hand-built controllers in tests need not supply it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.nbh.backend.order.service.OrderSourceLookup sources;
 
     public OrderController(CustomerOrderRepository orderRepository, OrderFulfilmentService fulfilmentService,
                             OrderReturnService returnService, PaymentClaimRepository claimRepository,
@@ -93,11 +96,27 @@ public class OrderController {
             Collection<OrderStatus> open = status == null ? QUEUE_STATUSES
                     : QUEUE_STATUSES.contains(status) ? List.of(status) : List.of();
             if (open.isEmpty()) return Page.empty(pageable);
-            return withPaymentCodes(orderRepository.searchQueue(open, term, phone, place, pageable)
-                    .map(o -> o.withUrgency(now)));
+            return withSources(withPaymentCodes(orderRepository.searchQueue(open, term, phone, place, pageable)
+                    .map(o -> o.withUrgency(now))));
         }
-        return withPaymentCodes(orderRepository.search(status, term, phone, place, codeFilter, pageable)
-                .map(o -> o.withUrgency(now)));
+        return withSources(withPaymentCodes(orderRepository.search(status, term, phone, place, codeFilter, pageable)
+                .map(o -> o.withUrgency(now))));
+    }
+
+    /** Where each order on the page came from (Google Ads, Instagram, staff…), one query for the page. */
+    private Page<OrderSummaryDto> withSources(Page<OrderSummaryDto> page) {
+        if (sources == null || page.isEmpty()) return page;
+        var byId = sources.forOrders(page.getContent().stream().map(OrderSummaryDto::id).toList());
+        return page.map(o -> o.withSource(byId.get(o.id())));
+    }
+
+    /** Where one order came from, for its detail view. */
+    @PreAuthorize("hasAuthority('PERM_ORDER_VIEW') or hasAuthority('PERM_ORDER_MANAGE_ALL')")
+    @GetMapping("/{id}/source")
+    public com.nbh.backend.order.dto.OrderSourceDto source(@PathVariable java.util.UUID id) {
+        var found = sources == null ? null : sources.forOrder(id);
+        if (found == null) throw new EntityNotFoundException("No order: " + id);
+        return found;
     }
 
     /**

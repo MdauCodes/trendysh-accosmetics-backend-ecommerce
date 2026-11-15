@@ -116,6 +116,30 @@ class TrafficSourcesIntegrationTest {
     }
 
     @Test
+    void staffSeeWhereEachOrderCameFromOnTheListAndTheOrder() throws Exception {
+        UUID visitor = UUID.randomUUID();
+        visit(visitor, "SOCIAL", "Instagram", BROWSER);
+        String adsOrder = checkout(visit(visitor, "GOOGLE_ADS", "google", BROWSER));
+        String untracked = checkout(null);
+
+        JsonNode one = ok(get("/api/v1/orders/" + adsOrder + "/source"), true);
+        assertThat(one.get("channel").asText()).isEqualTo("GOOGLE_ADS");
+        assertThat(one.get("campaign").asText()).isEqualTo("launch");
+        assertThat(one.get("firstChannel").asText()).as("found first on Instagram").isEqualTo("SOCIAL");
+        assertThat(one.get("firstSource").asText()).isEqualTo("instagram");
+        assertThat(ok(get("/api/v1/orders/" + untracked + "/source"), true).get("channel").asText()).isEqualTo("UNKNOWN");
+
+        JsonNode page = ok(get("/api/v1/orders?size=50&sort=createdAt,desc"), true).get("content");
+        JsonNode row = null;
+        for (JsonNode r : page) if (r.get("id").asText().equals(adsOrder)) row = r;
+        assertThat(row).as("the order is on the first page").isNotNull();
+        assertThat(row.get("source").get("channel").asText()).isEqualTo("GOOGLE_ADS");
+
+        int anonymous = mvc.perform(get("/api/v1/orders/" + adsOrder + "/source")).andReturn().getResponse().getStatus();
+        assertThat(anonymous).isIn(401, 403);
+    }
+
+    @Test
     void anOrderWithoutAVisitStillGoesThroughAndHasNoSource() throws Exception {
         String orderId = checkout(null);
         String unknown = checkout(UUID.randomUUID().toString());

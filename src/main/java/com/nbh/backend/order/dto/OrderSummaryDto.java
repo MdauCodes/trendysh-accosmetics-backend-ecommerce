@@ -42,7 +42,9 @@ public record OrderSummaryDto(
          * For an order still waiting on money: NONE (no M-PESA code entered yet), PENDING (one is waiting for a check)
          * or REJECTED — see {@code PaymentCodeStatus}. Null for every other status. Filled in after the query.
          */
-        String paymentCode
+        String paymentCode,
+        /** Where the order came from (see {@link OrderSourceDto}); filled in after the query, null until then. */
+        OrderSourceDto source
 ) {
     /** The shape the JPQL constructor expression selects; urgency and the code status are worked out afterwards. */
     public OrderSummaryDto(UUID id, String orderNo, OrderStatus status, String customerName, String guestEmail,
@@ -52,19 +54,25 @@ public record OrderSummaryDto(
                 false, null, fulfilmentType,
                 fulfilmentType == FulfilmentType.PICKUP && deliveryAddress != null && !deliveryAddress.isBlank()
                         ? deliveryAddress.trim() : null,
-                null);
+                null, null);
     }
 
     public OrderSummaryDto withUrgency(Instant now) {
         String reason = OrderUrgency.reason(createdAt, now);
         return new OrderSummaryDto(id, orderNo, status, customerName, guestEmail, guestPhone, itemCount, grandTotal,
                 createdAt, reason != null, reason, fulfilmentType,
-                pickupPlace, paymentCode);
+                pickupPlace, paymentCode, source);
     }
 
     public OrderSummaryDto withPaymentCode(String code) {
         return new OrderSummaryDto(id, orderNo, status, customerName, guestEmail, guestPhone, itemCount, grandTotal,
                 createdAt, urgent, urgentReason, fulfilmentType,
-                pickupPlace, code);
+                pickupPlace, code, source);
+    }
+
+    public OrderSummaryDto withSource(OrderSourceDto where) {
+        return new OrderSummaryDto(id, orderNo, status, customerName, guestEmail, guestPhone, itemCount, grandTotal,
+                createdAt, urgent, urgentReason, fulfilmentType,
+                pickupPlace, paymentCode, where);
     }
 }
