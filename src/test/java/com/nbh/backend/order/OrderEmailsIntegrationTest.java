@@ -143,11 +143,12 @@ class OrderEmailsIntegrationTest {
         String subject = sends.get(0)[0];
         String text = sends.get(0)[1];
         String html = sends.get(0)[2];
-        String link = "/pay/" + order.orderNo() + "?ref=" + order.reference();
+        String link = "/track?order=" + order.orderNo() + "&ref=" + order.reference();
 
-        assertThat(subject).contains(order.orderNo()).containsIgnoringCase("pay with M-PESA");
-        assertThat(text).contains("Hi Njeri,").contains(link).contains("KSh 1,000").contains("M-PESA payment name");
-        assertThat(html).contains("href=\"http://localhost:5250" + link + "\"").contains("Pay and enter my M-PESA payment name")
+        assertThat(subject).contains(order.orderNo()).contains("received").containsIgnoringCase("pay with M-PESA");
+        assertThat(text).contains("Hi Njeri,").contains(link).contains("KSh 1,000").contains("We've received your order")
+                .contains("already preparing").doesNotContain("complete");
+        assertThat(html).contains("href=\"http://localhost:5250" + link.replace("&", "&amp;") + "\"").contains("See my order")
                 .contains("KSh 1,000");
     }
 
@@ -182,8 +183,9 @@ class OrderEmailsIntegrationTest {
         sweeper.remindQuietCustomers();
         List<String[]> sends = sentTo(order.email());
         assertThat(sends).as("one reminder").hasSize(1);
-        assertThat(sends.get(0)[0]).startsWith("Reminder:").contains(order.orderNo());
-        assertThat(sends.get(0)[1]).contains("/pay/" + order.orderNo() + "?ref=" + order.reference());
+        assertThat(sends.get(0)[0]).contains(order.orderNo()).contains("waiting");
+        assertThat(sends.get(0)[1]).contains("/track?order=" + order.orderNo() + "&ref=" + order.reference())
+                .contains("I have paid");
 
         sweeper.remindQuietCustomers();
         assertThat(sentTo(order.email())).as("never a second one").hasSize(1);

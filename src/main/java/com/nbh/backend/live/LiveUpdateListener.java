@@ -98,7 +98,7 @@ public class LiveUpdateListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onPaymentClaimSubmitted(PaymentClaimSubmittedEvent event) {
-        streams.publishToStaff(new AdminEvent(AdminEvent.Type.PAYMENT_CLAIMED, event.orderNo(), event.amountClaimed()));
+        streams.publishToStaff(AdminEvent.paymentClaimed(event.orderNo(), event.amountClaimed(), event.payerName()));
         streams.publishToOrder(event.orderNo());
     }
 

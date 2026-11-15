@@ -11,10 +11,19 @@ import java.math.BigDecimal;
  * longer than its next refresh.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record AdminEvent(Type type, String orderNo, BigDecimal amount, String topic) {
+public record AdminEvent(Type type, String orderNo, BigDecimal amount, String topic, String payerName) {
 
     public AdminEvent(Type type, String orderNo, BigDecimal amount) {
-        this(type, orderNo, amount, null);
+        this(type, orderNo, amount, null, null);
+    }
+
+    /**
+     * A customer says they have paid: the name they say the M-PESA payment came from rides along, so the toast can say
+     * "Njeri Kamau paid for their order of KSh 1,500" (owner, 15 Nov 2026). Staff dashboards only: the stream needs a
+     * staff sign-in.
+     */
+    public static AdminEvent paymentClaimed(String orderNo, BigDecimal amount, String payerName) {
+        return new AdminEvent(Type.PAYMENT_CLAIMED, orderNo, amount, null, payerName);
     }
 
 
@@ -35,7 +44,7 @@ public record AdminEvent(Type type, String orderNo, BigDecimal amount, String to
     }
 
     public static AdminEvent dataChanged(String topic) {
-        return new AdminEvent(Type.DATA_CHANGED, null, null, topic);
+        return new AdminEvent(Type.DATA_CHANGED, null, null, topic, null);
     }
 
     public static AdminEvent of(Type type, String orderNo) {

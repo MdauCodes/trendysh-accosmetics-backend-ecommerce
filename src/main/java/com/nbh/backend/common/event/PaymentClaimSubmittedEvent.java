@@ -8,4 +8,10 @@ import java.util.UUID;
  * have to check it against the bank statement. IDs and scalars only, like every event here (see
  * {@link OrderPlacedEvent}).
  */
-public record PaymentClaimSubmittedEvent(UUID claimId, UUID paymentRecordId, String orderNo, BigDecimal amountClaimed) {}
+public record PaymentClaimSubmittedEvent(UUID claimId, UUID paymentRecordId, String orderNo, BigDecimal amountClaimed,
+                                         String payerName) {
+
+    public PaymentClaimSubmittedEvent(UUID claimId, UUID paymentRecordId, String orderNo, BigDecimal amountClaimed) {
+        this(claimId, paymentRecordId, orderNo, amountClaimed, null);
+    }
+}

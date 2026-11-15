@@ -78,7 +78,9 @@ public class PaymentInstructionsService {
 
         return new PaymentInstructionsDto(order.getOrderNo(), reference, payment.getAmount(), "KES",
                 displayStatus(order, payment), payment.getExpiresAt(), paybill, transfer,
-                settings.supportWhatsapp(), codeStatus == PaymentCodeStatus.PENDING, codeStatus.name(), submittedCode);
+                settings.supportWhatsapp(), codeStatus == PaymentCodeStatus.PENDING, codeStatus.name(), submittedCode,
+                com.nbh.backend.order.service.OrderEmailService.firstNameOf(order.getCustomerName()),
+                order.getFulfilmentType() == com.nbh.backend.order.entity.FulfilmentType.PICKUP);
     }
 
     /**

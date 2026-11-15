@@ -76,6 +76,21 @@ class PaymentInstructionsServiceTest {
     }
 
     @Test
+    void theOrderPageGetsTheShoppersFirstNameAndWhetherItIsAPickup() {
+        order.setCustomerName("  Njeri Wanjiku Kamau ");
+        order.setFulfilmentType(com.nbh.backend.order.entity.FulfilmentType.PICKUP);
+        var dto = service.forOrder("SO-20260101-000001", reference);
+        assertThat(dto.firstName()).isEqualTo("Njeri");
+        assertThat(dto.pickup()).isTrue();
+
+        order.setCustomerName("0712345678");
+        order.setFulfilmentType(com.nbh.backend.order.entity.FulfilmentType.DELIVERY_COURIER);
+        dto = service.forOrder("SO-20260101-000001", reference);
+        assertThat(dto.firstName()).as("a phone number typed as the name is no name").isNull();
+        assertThat(dto.pickup()).isFalse();
+    }
+
+    @Test
     void referenceIsAcceptedLowerCaseAndSpaced() {
         var typed = reference.substring(0, 3).toLowerCase() + " " + reference.substring(3);
         assertThat(service.forOrder("SO-20260101-000001", typed).reference()).isEqualTo(reference);

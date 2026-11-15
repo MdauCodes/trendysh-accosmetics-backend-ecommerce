@@ -79,11 +79,11 @@ class LiveUpdateListenerTest {
     }
 
     @Test
-    void paymentClaimSubmittedTellsStaffTheClaimedAmountAndTellsTheOrdersWatchers() {
+    void paymentClaimSubmittedTellsStaffWhoPaidAndHowMuchAndTellsTheOrdersWatchers() {
         listener.onPaymentClaimSubmitted(new PaymentClaimSubmittedEvent(UUID.randomUUID(), UUID.randomUUID(), "SO-1",
-                new BigDecimal("500")));
+                new BigDecimal("500"), "Njeri Kamau"));
 
-        verify(streams).publishToStaff(new AdminEvent(AdminEvent.Type.PAYMENT_CLAIMED, "SO-1", new BigDecimal("500")));
+        verify(streams).publishToStaff(AdminEvent.paymentClaimed("SO-1", new BigDecimal("500"), "Njeri Kamau"));
         verify(streams).publishToOrder("SO-1");
     }
 

@@ -77,21 +77,23 @@ public class OrderEmailService {
         String firstName = firstName(order);
         String until = payment.getExpiresAt() == null ? null : CLOCK.format(payment.getExpiresAt());
 
-        String intro = "Thank you for ordering from Trendysh. Your items are reserved"
-                + (until == null ? "" : " until " + until)
-                + ". Pay with M-PESA Paybill, then type the name on your M-PESA payment on the payment page: "
-                + "your order is complete once we have it.";
+        // Owner, 15 Nov 2026: the order is received; paying is what gets it prepared. No "not complete", no extra step.
+        // Owner, 15 Nov 2026: the order is already being prepared; it leaves (or can be collected) once the payment is in.
+        String intro = "Thank you for ordering from Trendysh. We've received your order and are already preparing it. "
+                + (order.getFulfilmentType() == FulfilmentType.PICKUP
+                        ? "It is ready to collect as soon as your payment is confirmed. "
+                        : "We dispatch it as soon as your payment is confirmed. ")
+                + "Pay with M-PESA Paybill using the details below"
+                + (until == null ? "." : " by " + until + ".");
         List<Fact> facts = payFacts(instructions);
         String payLink = payLink(order, payment);
 
-        send(order, "Order " + order.getOrderNo() + ": pay with M-PESA to complete it",
-                text(firstName, "Your order is saved, one more step", intro, facts, order, "Pay and enter your M-PESA payment name:", payLink,
-                        "Already paid? Open that link and type the name on your M-PESA payment. Questions? WhatsApp us on "
-                                + instructions.supportWhatsapp() + "."),
-                EmailTemplates.orderMessage(logoUrl(), firstName, "Your order is saved, one more step", intro, facts,
-                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Pay and enter my M-PESA payment name", payLink,
-                        "Already paid? Open the link and type the name on your M-PESA payment. Questions? WhatsApp us on "
-                                + instructions.supportWhatsapp() + "."));
+        send(order, "Order " + order.getOrderNo() + " received: pay with M-PESA to get it prepared",
+                text(firstName, "We've received your order", intro, facts, order, "Follow your order and tell us once you've paid:", payLink,
+                        "Questions? Call or WhatsApp us on " + instructions.supportWhatsapp() + "."),
+                EmailTemplates.orderMessage(logoUrl(), firstName, "We've received your order", intro, facts,
+                        itemLines(order), "Total", ksh(order.getGrandTotal()), "See my order", payLink,
+                        "Questions? Call or WhatsApp us on " + instructions.supportWhatsapp() + "."));
     }
 
     /**
@@ -106,18 +108,18 @@ public class OrderEmailService {
         String firstName = firstName(order);
         String until = payment.getExpiresAt() == null ? null : CLOCK.format(payment.getExpiresAt());
 
-        String intro = "You placed order " + order.getOrderNo() + " a little while ago, but we haven't received the M-PESA payment name "
-                + "that completes it. If you've already paid, open the payment page and type the name on your M-PESA payment. "
-                + (until == null ? "" : "If you haven't paid yet, your items are reserved until " + until + ".");
+        String intro = "We're preparing your order " + order.getOrderNo() + ", and it goes out as soon as your payment is confirmed. "
+                + (until == null ? "" : "We're holding your items until " + until + ". ")
+                + "Pay with M-PESA Paybill using the details below. Already paid? Open your order and press \"I have paid\".";
         List<Fact> facts = payFacts(instructions);
         String payLink = payLink(order, payment);
 
-        send(order, "Reminder: we still need your M-PESA payment name for order " + order.getOrderNo(),
-                text(firstName, "We still need your M-PESA payment name", intro, facts, order, "Type your M-PESA payment name here:", payLink,
-                        "Need help? WhatsApp us on " + instructions.supportWhatsapp() + "."),
-                EmailTemplates.orderMessage(logoUrl(), firstName, "We still need your M-PESA payment name", intro, facts,
-                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Enter my M-PESA payment name", payLink,
-                        "Need help? WhatsApp us on " + instructions.supportWhatsapp() + "."));
+        send(order, "Order " + order.getOrderNo() + ": your items are waiting for you",
+                text(firstName, "Your order is waiting for its payment", intro, facts, order, "Open your order:", payLink,
+                        "Need help? Call or WhatsApp us on " + instructions.supportWhatsapp() + "."),
+                EmailTemplates.orderMessage(logoUrl(), firstName, "Your order is waiting for its payment", intro, facts,
+                        itemLines(order), "Total", ksh(order.getGrandTotal()), "Open my order", payLink,
+                        "Need help? Call or WhatsApp us on " + instructions.supportWhatsapp() + "."));
     }
 
     /** "Payment received": the receipt, with where the order is collected or how it will be delivered. */
@@ -167,8 +169,9 @@ public class OrderEmailService {
         return facts;
     }
 
+    /** The order's own tracking page, with the reference that shows its Paybill details and "I have paid". */
     private String payLink(CustomerOrder order, PaymentRecord payment) {
-        return frontendUrl + "/pay/" + order.getOrderNo() + "?ref=" + payment.getPaymentReference();
+        return frontendUrl + "/track?order=" + order.getOrderNo() + "&ref=" + payment.getPaymentReference();
     }
 
     private String logoUrl() {
@@ -220,19 +223,29 @@ public class OrderEmailService {
     }
 
     /**
-     * A name a person could have: letters, digits, apostrophes and hyphens, at most 30. The checkout is public and the
-     * name is whatever the sender typed, so a "first name" like www.refund-example.co.ke would otherwise open an email
-     * from the shop's own address and be turned into a link by the reader's mail app. Anything else greets as "there".
+     * A name a person could have: letters, digits, apostrophes and hyphens, at most 30, with at least one letter. The
+     * checkout is public and the name is whatever the sender typed, so a "first name" like www.refund-example.co.ke
+     * would otherwise open an email from the shop's own address and be turned into a link by the reader's mail app, and
+     * a phone number typed into the name box would read "Thank you, 0712345678". Anything else greets as "there".
      */
-    private static final Pattern NAME_LIKE = Pattern.compile("[\\p{L}\\p{M}\\p{N}'’-]{1,30}");
+    private static final Pattern NAME_LIKE = Pattern.compile("(?=.*\\p{L})[\\p{L}\\p{M}\\p{N}'’-]{1,30}");
 
     private static String firstName(CustomerOrder order) {
-        String name = order.getCustomerName() == null ? "" : order.getCustomerName().trim();
+        String first = firstNameOf(order.getCustomerName());
+        return first == null ? "there" : first;
+    }
+
+    /**
+     * The first word of a customer's name when it looks like a name (the checkout is public, so it is whatever was
+     * typed: a web address is never used as a greeting); null otherwise.
+     */
+    public static String firstNameOf(String customerName) {
+        String name = customerName == null ? "" : customerName.trim();
         if (name.isEmpty()) {
-            return "there";
+            return null;
         }
         String first = name.split("\\s+")[0];
-        return NAME_LIKE.matcher(first).matches() ? first : "there";
+        return NAME_LIKE.matcher(first).matches() ? first : null;
     }
 
     /** "KSh 2,400", or "KSh 2,400.50" when there are cents. */

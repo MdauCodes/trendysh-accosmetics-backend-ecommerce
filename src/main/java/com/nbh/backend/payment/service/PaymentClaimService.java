@@ -153,7 +153,7 @@ public class PaymentClaimService {
         }
         // Staff have to check this against the statement: tell any open dashboard as soon as it commits.
         eventPublisher.publishEvent(new PaymentClaimSubmittedEvent(
-                claim.getId(), payment.getId(), payment.getOrder().getOrderNo(), amount));
+                claim.getId(), payment.getId(), payment.getOrder().getOrderNo(), amount, claim.getPayerName()));
         return claim;
     }
 

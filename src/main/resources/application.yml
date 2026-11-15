@@ -89,7 +89,7 @@ app:
     reservation-sweep-interval-ms: ${RESERVATION_SWEEP_INTERVAL_MS:60000}
   payments:
     # How long the stock is held and the reference stays payable (bank transfers are slow).
-    window-minutes: ${PAYMENT_WINDOW_MINUTES:45}
+    window-minutes: ${PAYMENT_WINDOW_MINUTES:1440}
   bank:
     # Shown on the customer's pay page. Blank paybill-number hides the Paybill tab;
     # blank account-number hides the bank-transfer tab. Set to the client's real details.

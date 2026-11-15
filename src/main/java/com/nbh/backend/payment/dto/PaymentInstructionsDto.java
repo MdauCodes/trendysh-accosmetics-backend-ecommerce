@@ -28,7 +28,11 @@ public record PaymentInstructionsDto(
          */
         String codeStatus,
         /** The code waiting for a check, so the page can show the customer what was received; null if none. */
-        String submittedCode
+        String submittedCode,
+        /** The customer's first name for "Thank you, Njeri" (null when the name typed does not look like one). */
+        String firstName,
+        /** True when the order is collected from a shop, so the page says "collect" rather than "dispatch". */
+        boolean pickup
 ) {
     /** {@code merchantName} is what the customer's phone shows for this paybill (empty when not set). */
     public record Paybill(String paybillNumber, String accountNumber, String merchantName) {}
