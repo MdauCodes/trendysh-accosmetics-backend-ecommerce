@@ -63,6 +63,10 @@ public class StaffOrderService {
     private final OrderDetailService orderDetails;
     private final ObjectMapper objectMapper;
 
+    /** For recording that an order came from a WhatsApp message; optional so hand-built services in tests need not supply it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     public StaffOrderService(CartService cartService, CheckoutService checkoutService, PaymentService paymentService,
                              CustomerOrderRepository orderRepository, OrderPriceChangeService priceChanges,
                              OrderDetailService orderDetails, ObjectMapper objectMapper) {
@@ -141,6 +145,12 @@ public class StaffOrderService {
         CustomerOrder order = result.order();
         if (changed != null) {
             priceChanges.record(order, changed, staff);
+        }
+
+        // Made from a customer's WhatsApp message (the paste box): the staff order list then says it came from WhatsApp.
+        if ("WHATSAPP".equals(request.via()) && jdbc != null) {
+            jdbc.update("UPDATE customer_order SET last_channel = 'WHATSAPP', last_source = 'message' WHERE id = ?",
+                    order.getId());
         }
 
         PaymentRecord payment = result.paymentRecord();

@@ -41,7 +41,9 @@ public final class StaffOrderDtos {
             @Valid DeliveryDetails deliveryDetails,
             @NotNull @PositiveOrZero BigDecimal expectedSubtotal,
             @Valid PayNow payNow,
-            @Valid @Size(max = 50) List<@NotNull @Valid PriceChangeInput> priceChanges
+            @Valid @Size(max = 50) List<@NotNull @Valid PriceChangeInput> priceChanges,
+            /** WHATSAPP when staff made the order from a customer's pasted WhatsApp message; null otherwise. */
+            @Pattern(regexp = "WHATSAPP", message = "via must be WHATSAPP") String via
     ) {}
 
     /** The payment staff are taking now. {@code reference} is the M-PESA code, bank reference or receipt number. */
