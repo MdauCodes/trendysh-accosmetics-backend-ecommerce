@@ -51,6 +51,16 @@ class LatePaymentAndExpiryIntegrationTest {
 
     private String staffToken;
 
+    /** Unpaid orders no longer expire by default; the tests that exercise the legacy switch turn it on and this turns it off. */
+    private void expiryOn() {
+        org.springframework.test.util.ReflectionTestUtils.setField(orderExpirySweeper, "expireUnpaid", true);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void expiryOff() {
+        org.springframework.test.util.ReflectionTestUtils.setField(orderExpirySweeper, "expireUnpaid", false);
+    }
+
     @BeforeEach
     void setUp() {
         var admin = staffUsers.findAll().stream()
@@ -157,6 +167,7 @@ class LatePaymentAndExpiryIntegrationTest {
         Placed placed = place(item, 2);
         lapseTheHold(placed);
 
+        expiryOn();
         assertThat(orderExpirySweeper.sweepUnpaidOrders()).isGreaterThanOrEqualTo(1);
         assertThat(orderStatus(placed)).isEqualTo("EXPIRED");
 
@@ -352,7 +363,51 @@ class LatePaymentAndExpiryIntegrationTest {
     }
 
     @Test
-    void aContactAtTheOpenOrderLimitIsRefusedUntilOneOfTheirOrdersExpires() throws Exception {
+    void aLapsedUnpaidOrderStaysPendingPaymentAndStaffCanStillConfirmIt() throws Exception {
+        Item item = newPublishedVariantWithStock(10);
+        Placed placed = place(item, 2);
+        lapseTheHold(placed);
+
+        assertThat(orderExpirySweeper.sweepUnpaidOrders()).isZero();
+        assertThat(orderStatus(placed)).isEqualTo("PENDING_PAYMENT");
+
+        assertThat(confirm(placed).getResponse().getStatus()).isEqualTo(200);
+        assertThat(orderStatus(placed)).isEqualTo("PAID");
+        assertThat(holdsOf(placed).stream().filter(r -> r.getStatus() == StockReservation.ReservationStatus.ACTIVE))
+                .as("late payment re-takes the stock").hasSize(1);
+    }
+
+    @Test
+    void anOrderThatIsAlreadyExpiredCanStillBeCancelledAndPaid() throws Exception {
+        Item item = newPublishedVariantWithStock(10);
+        Placed toCancel = place(item, 1);
+        Placed toPay = place(item, 1);
+        lapseTheHold(toCancel);
+        lapseTheHold(toPay);
+        // Legacy rows: orders the old sweeper already moved to EXPIRED.
+        jdbc.update("UPDATE customer_order SET status = 'EXPIRED' WHERE id IN (?, ?)",
+                UUID.fromString(toCancel.orderId()), UUID.fromString(toPay.orderId()));
+
+        okStaff(post("/api/v1/orders/" + toCancel.orderId() + "/cancel")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"never paid\"}"));
+        assertThat(orderStatus(toCancel)).isEqualTo("CANCELLED");
+
+        assertThat(confirm(toPay).getResponse().getStatus()).isEqualTo(200);
+        assertThat(orderStatus(toPay)).isEqualTo("PAID");
+    }
+
+    @Test
+    void anExpiredOrderWithTheLegacySwitchOffIsNotCreatedButTheSwitchStillWorks() throws Exception {
+        Item item = newPublishedVariantWithStock(5);
+        Placed placed = place(item, 1);
+        lapseTheHold(placed);
+        expiryOn();
+        assertThat(orderExpirySweeper.sweepUnpaidOrders()).isGreaterThanOrEqualTo(1);
+        assertThat(orderStatus(placed)).isEqualTo("EXPIRED");
+    }
+
+    @Test
+    void aContactAtTheOpenOrderLimitIsRefusedUntilTheirPaymentWindowsLapse() throws Exception {
         Item item = newPublishedVariantWithStock(20);
         String phone = TestContacts.phone();
         List<Placed> open = List.of(
@@ -365,7 +420,10 @@ class LatePaymentAndExpiryIntegrationTest {
         assertThat(refused.getResponse().getContentAsString()).contains("waiting for payment");
 
         open.forEach(this::lapseTheHold);
+        open.forEach(p -> jdbc.update("UPDATE payment_record SET expires_at = now() - interval '1 minute' WHERE id = ?",
+                UUID.fromString(p.paymentId())));
         orderExpirySweeper.sweepUnpaidOrders();
+        assertThat(orderStatus(open.get(0))).as("the order itself stays unpaid").isEqualTo("PENDING_PAYMENT");
 
         MvcResult allowed = checkout(item, 1, phone, TestContacts.email());
         assertThat(allowed.getResponse().getStatus()).as(allowed.getResponse().getContentAsString()).isEqualTo(200);
@@ -381,6 +439,7 @@ class LatePaymentAndExpiryIntegrationTest {
         Item item = newPublishedVariantWithStock(5);
         Placed placed = place(item, 1);
         lapseTheHold(placed);
+        expiryOn();
         orderExpirySweeper.sweepUnpaidOrders();
         assertThat(orderStatus(placed)).isEqualTo("EXPIRED");
 

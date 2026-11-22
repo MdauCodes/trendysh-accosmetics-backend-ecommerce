@@ -93,7 +93,8 @@ public class OrderFulfilmentService {
      * a hold, not a posted sale, until {@link #fulfil} runs.
      */
     private static final Set<OrderStatus> CANCELLABLE_STATUSES =
-            EnumSet.of(OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.PICKING, OrderStatus.READY);
+            EnumSet.of(OrderStatus.PENDING_PAYMENT, OrderStatus.EXPIRED, OrderStatus.PAID, OrderStatus.PICKING,
+                    OrderStatus.READY);
 
     private final CustomerOrderRepository orderRepository;
     private final StockAvailabilityService availabilityService;

@@ -20,7 +20,11 @@ import java.util.UUID;
 /**
  * Moves an unpaid order to EXPIRED once none of its stock holds is still live.
  *
- * <p>Until 2026-09-28 nothing did: {@code StockReservationExpirySweeper} correctly gave a lapsed
+ * <p><b>Not used by default any more:</b> {@link OrderExpirySweeper} only calls this when
+ * {@code app.orders.expire-unpaid=true} (owner decision, Nov 2026: unpaid orders stay PENDING_PAYMENT until staff
+ * confirm payment or cancel). Orders already EXPIRED stay so, and can still be paid or cancelled by staff.
+ *
+ * <p>Until 2026-09-28 nothing did:{@code StockReservationExpirySweeper} correctly gave a lapsed
  * hold's stock back, but the order it belonged to stayed PENDING_PAYMENT for ever (in the dev
  * database, orders from two weeks earlier were still "awaiting payment"), so admin lists filled
  * with dead orders and the per-contact open-order cap could never free up.

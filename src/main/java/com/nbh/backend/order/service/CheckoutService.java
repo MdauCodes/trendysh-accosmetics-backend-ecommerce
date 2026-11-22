@@ -186,10 +186,12 @@ public class CheckoutService {
         // Every checkout holds stock for the whole payment window, and the public endpoint has no
         // login, so without a limit one person could tie up the shelf with orders they never pay
         // for. Counting by phone OR email (when there is one) means changing just one doesn't get round it;
-        // OrderExpiryService is what frees a slot again once a hold lapses.
+        // only orders whose payment window is still live count, so a slot frees up when the hold lapses even though
+        // the unpaid order itself stays PENDING_PAYMENT for staff.
         String contactPhone = PhoneNumbers.normalize(request.guestPhone());
         long open = placement.byStaff() ? 0 : orderRepository.countByStatusForContact(
-                OrderStatus.PENDING_PAYMENT, contactPhone, request.guestEmail() == null ? "" : request.guestEmail());
+                OrderStatus.PENDING_PAYMENT, contactPhone, request.guestEmail() == null ? "" : request.guestEmail(),
+                Instant.now(clock));
         if (open >= maxOpenOrdersPerContact) {
             throw new TooManyRequestsException("You already have " + open
                     + " orders waiting for payment. Please pay for one of them, or wait for it to expire,"

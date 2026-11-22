@@ -129,16 +129,19 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
     List<UUID> findIdsDueForPaymentReminder(@Param("cutoff") Instant cutoff, @Param("now") Instant now);
 
     /**
-     * Orders this person already has waiting for payment, matched on phone OR email — the cap
-     * on how many stock holds one contact can have open at once (see CheckoutService).
+     * Orders this person has waiting for payment whose payment window (= stock hold) is still live, matched on phone
+     * OR email — the cap on how many stock holds one contact can have open at once (see CheckoutService). Unpaid orders
+     * no longer expire, so one past its window (kept for staff to confirm or cancel) must not count against the cap.
      */
     @Query("""
             select count(o) from CustomerOrder o
             where o.status = :status
               and (o.guestPhone = :phone or lower(o.guestEmail) = lower(:email))
+              and exists (select 1 from PaymentRecord p where p.order = o and p.expiresAt > :now)
             """)
     long countByStatusForContact(@Param("status") OrderStatus status,
-                                 @Param("phone") String phone, @Param("email") String email);
+                                 @Param("phone") String phone, @Param("email") String email,
+                                 @Param("now") Instant now);
 
     /**
      * Staff order-browse list — one query, no N+1 (F12 pattern): the item
@@ -184,9 +187,13 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
                             OR EXISTS (SELECT 1 FROM PaymentClaim c WHERE c.payment.order = o)))
                    OR (CAST(:paymentCode AS string) = 'NO_CODE'
                        AND o.status = com.nbh.backend.order.entity.OrderStatus.PENDING_PAYMENT
+                       AND EXISTS (SELECT 1 FROM PaymentRecord pr WHERE pr.order = o AND pr.expiresAt > CURRENT_TIMESTAMP)
                        AND NOT EXISTS (SELECT 1 FROM PaymentClaim c WHERE c.payment.order = o))
                    OR (CAST(:paymentCode AS string) = 'EXPIRED_NO_CODE'
-                       AND o.status = com.nbh.backend.order.entity.OrderStatus.EXPIRED
+                       AND (o.status = com.nbh.backend.order.entity.OrderStatus.EXPIRED
+                            OR (o.status = com.nbh.backend.order.entity.OrderStatus.PENDING_PAYMENT
+                                AND NOT EXISTS (SELECT 1 FROM PaymentRecord pr
+                                                WHERE pr.order = o AND pr.expiresAt > CURRENT_TIMESTAMP)))
                        AND NOT EXISTS (SELECT 1 FROM PaymentClaim c WHERE c.payment.order = o)))
             ORDER BY o.createdAt DESC
             """)
@@ -198,7 +205,8 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
     /**
      * The fulfilment queue: only orders still waiting on staff ({@code statuses} — dispatched, delivered,
      * cancelled and expired ones are handled and drop out), oldest first so the longest-waiting is on
-     * top. Same demo-data gating and search as {@link #search}.
+     * top. An unpaid order past its payment window with no payment details sent drops out too (it is on the
+     * "not paid after a day" tab instead), so dead orders never bury new ones now that unpaid orders don't expire. Same demo-data gating and search as {@link #search}.
      */
     @Query("""
             SELECT NEW com.nbh.backend.order.dto.OrderSummaryDto(
@@ -207,6 +215,9 @@ public interface CustomerOrderRepository extends JpaRepository<CustomerOrder, UU
                 o.fulfilmentType, o.deliveryAddress)
             FROM CustomerOrder o
             WHERE o.status IN :statuses
+              AND (o.status <> com.nbh.backend.order.entity.OrderStatus.PENDING_PAYMENT
+                   OR EXISTS (SELECT 1 FROM PaymentClaim c WHERE c.payment.order = o)
+                   OR EXISTS (SELECT 1 FROM PaymentRecord pr WHERE pr.order = o AND pr.expiresAt > CURRENT_TIMESTAMP))
               AND (:q IS NULL
                    OR LOWER(o.orderNo) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
                    OR LOWER(o.customerName) LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))

@@ -128,7 +128,7 @@ class StockSetupIntegrationTest {
                 Integer.class, item.variantId())).isEqualTo(1);
         assertThat(onHand(item)).isEqualByComparingTo("0");
 
-        // with nothing held, the unpaid order lapses when its payment window does
+        // with nothing held, the lapse rule (kept behind app.orders.expire-unpaid; the sweeper is off by default) goes by the payment window
         UUID orderId = jdbc.queryForObject("SELECT order_id FROM customer_order_item WHERE variant_id = ?::uuid",
                 UUID.class, item.variantId());
         assertThat(orderExpiry.expireIfLapsed(orderId)).as("window still open").isFalse();

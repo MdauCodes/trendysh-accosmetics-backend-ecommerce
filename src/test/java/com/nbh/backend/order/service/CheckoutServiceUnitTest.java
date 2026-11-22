@@ -103,7 +103,7 @@ class CheckoutServiceUnitTest {
     void aContactAlreadyAtTheOpenOrderLimitCannotHoldMoreStock() {
         when(cartItemRepository.findByCartId(cart.getId()))
                 .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-        when(orderRepository.countByStatusForContact(any(), any(), any())).thenReturn((long) MAX_OPEN_ORDERS);
+        when(orderRepository.countByStatusForContact(any(), any(), any(), any())).thenReturn((long) MAX_OPEN_ORDERS);
 
         assertThatThrownBy(() -> checkoutService.checkout(SESSION_ID, request()))
                 .isInstanceOf(com.nbh.backend.common.exception.TooManyRequestsException.class)
@@ -116,7 +116,7 @@ class CheckoutServiceUnitTest {
     void oneOrderUnderTheLimitStillChecksOut() {
         when(cartItemRepository.findByCartId(cart.getId()))
                 .thenReturn(List.of(cartItem(new BigDecimal("500.00"), BigDecimal.ONE, new BigDecimal("0.1600"), false)));
-        when(orderRepository.countByStatusForContact(any(), any(), any())).thenReturn((long) MAX_OPEN_ORDERS - 1);
+        when(orderRepository.countByStatusForContact(any(), any(), any(), any())).thenReturn((long) MAX_OPEN_ORDERS - 1);
 
         assertThat(checkoutService.checkout(SESSION_ID, request()).order().getOrderNo()).isEqualTo("SO-TEST-000001");
     }
