@@ -200,6 +200,41 @@ class TrafficSourcesIntegrationTest {
     }
 
     @Test
+    void checkoutStepsAreAcceptedAndCountedPerSource() throws Exception {
+        String v = visit(UUID.randomUUID(), "GOOGLE_ADS", "steps-test", BROWSER);
+        String[] events = {
+                "{\"kind\":\"CHECKOUT_STARTED\"}",
+                "{\"kind\":\"CHECKOUT_DETAILS_DONE\",\"detail\":\"rider\"}",
+                "{\"kind\":\"CHECKOUT_DETAILS_DONE\",\"detail\":\"RIDER\"}",
+                "{\"kind\":\"CHECKOUT_PLACE_TAPPED\"}",
+                "{\"kind\":\"CHECKOUT_PLACE_FAILED\",\"detail\":\"STOCK\"}",
+                "{\"kind\":\"CHECKOUT_PLACE_FAILED\",\"detail\":\"NETWORK\"}",
+                "{\"kind\":\"ORDER_PAY_PAGE_SEEN\"}",
+                "{\"kind\":\"ORDER_PAID_CLAIM_SENT\"}"};
+        for (String e : events) {
+            ok(post("/api/v1/public/visits/" + v + "/events").header("User-Agent", BROWSER)
+                    .contentType(MediaType.APPLICATION_JSON).content(e), false);
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM site_event WHERE visit_id = ?::uuid", Long.class, v)).isEqualTo(8);
+        assertThat(jdbc.queryForObject("SELECT detail FROM site_event WHERE visit_id = ?::uuid AND kind = 'CHECKOUT_DETAILS_DONE' LIMIT 1",
+                String.class, v)).isEqualTo("RIDER");
+
+        LocalDate today = LocalDate.now(ZoneId.of("Africa/Nairobi"));
+        JsonNode report = ok(get("/api/v1/admin/analytics/sources?from=" + today + "&to=" + today), true);
+        JsonNode source = null;
+        for (JsonNode s : report.get("sources")) {
+            if ("steps-test".equals(s.path("source").asText())) source = s;
+        }
+        assertThat(source).isNotNull();
+        assertThat(source.get("checkoutsStarted").asLong()).isEqualTo(1);
+        assertThat(source.get("detailsDone").asLong()).isEqualTo(1);
+        assertThat(source.get("placeTapped").asLong()).isEqualTo(1);
+        assertThat(source.get("placeFailed").asLong()).isEqualTo(2);
+        assertThat(source.get("payPageSeen").asLong()).isEqualTo(1);
+        assertThat(source.get("paidClaimsSent").asLong()).isEqualTo(1);
+    }
+
+    @Test
     void theReportIsForStaffOnly() throws Exception {
         LocalDate today = LocalDate.now(ZoneId.of("Africa/Nairobi"));
         int status = mvc.perform(get("/api/v1/admin/analytics/sources?from=" + today + "&to=" + today))

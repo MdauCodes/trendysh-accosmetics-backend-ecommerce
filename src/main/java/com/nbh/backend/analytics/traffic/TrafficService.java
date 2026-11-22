@@ -39,7 +39,9 @@ public class TrafficService {
 
     static final ZoneId NAIROBI = ZoneId.of("Africa/Nairobi");
     /** What a visit can lead to. WHATSAPP_BASKET carries the basket's value; the others count. */
-    static final Set<String> EVENT_KINDS = Set.of("ADD_TO_CART", "CHECKOUT_STARTED", "WHATSAPP_BASKET", "WHATSAPP_CHAT");
+    static final Set<String> EVENT_KINDS = Set.of("ADD_TO_CART", "CHECKOUT_STARTED", "WHATSAPP_BASKET", "WHATSAPP_CHAT",
+            "CHECKOUT_DETAILS_DONE", "CHECKOUT_PLACE_TAPPED", "CHECKOUT_PLACE_FAILED", "ORDER_PAY_PAGE_SEEN",
+            "ORDER_PAID_CLAIM_SENT");
     /** Link previews and crawlers fetch pages too; they are not shoppers. */
     private static final Pattern BOT = Pattern.compile(
             "bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|headless|lighthouse|pingdom|curl|wget|python",
@@ -86,16 +88,17 @@ public class TrafficService {
 
     /** False when the visit is unknown (removed, or never kept) or the kind is not one we record. */
     @Transactional
-    public boolean recordEvent(UUID visitId, String kind, BigDecimal value) {
+    public boolean recordEvent(UUID visitId, String kind, BigDecimal value, String detail) {
         String k = kind == null ? "" : kind.trim().toUpperCase(Locale.ROOT);
         if (!EVENT_KINDS.contains(k)) return false;
         int n = jdbc.update("""
-                INSERT INTO site_event (visit_id, kind, value, at)
-                SELECT v.id, :kind, :value, :at FROM site_visit v WHERE v.id = :visit
+                INSERT INTO site_event (visit_id, kind, value, detail, at)
+                SELECT v.id, :kind, :value, :detail, :at FROM site_visit v WHERE v.id = :visit
                 """, new MapSqlParameterSource()
                 .addValue("visit", visitId)
                 .addValue("kind", k)
                 .addValue("value", "WHATSAPP_BASKET".equals(k) ? value : null)
+                .addValue("detail", k.startsWith("CHECKOUT_DETAILS") || k.endsWith("PLACE_FAILED") ? detailCode(detail) : null)
                 .addValue("at", Timestamp.from(Instant.now(clock))));
         return n > 0;
     }
@@ -140,7 +143,7 @@ public class TrafficService {
             acc(sources, rs.getString("channel"), rs.getString("src")).visits += rs.getLong("n");
         });
         jdbc.query("""
-                SELECT v.channel, COALESCE(v.source, '') AS src, e.kind, COUNT(*) AS n, COALESCE(SUM(e.value), 0) AS total
+                SELECT v.channel, COALESCE(v.source, '') AS src, e.kind, COUNT(*) AS n, COUNT(DISTINCT e.visit_id) AS shoppers, COALESCE(SUM(e.value), 0) AS total
                 FROM site_event e JOIN site_visit v ON v.id = e.visit_id
                 WHERE e.at >= :a AND e.at < :b GROUP BY 1, 2, 3
                 """, p, rs -> {
@@ -154,6 +157,12 @@ public class TrafficService {
                     a.basketValue = a.basketValue.add(rs.getBigDecimal("total"));
                 }
                 case "WHATSAPP_CHAT" -> a.chats += n;
+                // Checkout steps count visits, so a shopper who retries is one; failures count every attempt.
+                case "CHECKOUT_DETAILS_DONE" -> a.detailsDone += rs.getLong("shoppers");
+                case "CHECKOUT_PLACE_TAPPED" -> a.placeTapped += rs.getLong("shoppers");
+                case "CHECKOUT_PLACE_FAILED" -> a.placeFailed += n;
+                case "ORDER_PAY_PAGE_SEEN" -> a.payPageSeen += rs.getLong("shoppers");
+                case "ORDER_PAID_CLAIM_SENT" -> a.paidClaimsSent += rs.getLong("shoppers");
                 default -> { }
             }
         });
@@ -274,6 +283,14 @@ public class TrafficService {
                 new MapSqlParameterSource("cut", Timestamp.from(cutoff)));
     }
 
+    /** A short upper-case code (RIDER, STOCK…); anything else a caller sends is cut down to letters, digits and _. */
+    static String detailCode(String value) {
+        if (value == null) return null;
+        String v = value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9_]", "");
+        if (v.isEmpty()) return null;
+        return v.length() > 24 ? v.substring(0, 24) : v;
+    }
+
     static String tidy(String value, int max) {
         if (value == null) return null;
         String v = value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
@@ -308,6 +325,7 @@ public class TrafficService {
         final String channel;
         final String source;
         long visits, addToCarts, checkouts, baskets, chats, orders, paid;
+        long detailsDone, placeTapped, placeFailed, payPageSeen, paidClaimsSent;
         BigDecimal basketValue = BigDecimal.ZERO, revenue = BigDecimal.ZERO, spend = null;
 
         Acc(String channel, String source) {
@@ -323,13 +341,18 @@ public class TrafficService {
             chats += o.chats;
             orders += o.orders;
             paid += o.paid;
+            detailsDone += o.detailsDone;
+            placeTapped += o.placeTapped;
+            placeFailed += o.placeFailed;
+            payPageSeen += o.payPageSeen;
+            paidClaimsSent += o.paidClaimsSent;
             basketValue = basketValue.add(o.basketValue);
             revenue = revenue.add(o.revenue);
         }
 
         SourceRow row() {
             return new SourceRow(channel, source, visits, addToCarts, checkouts, baskets, basketValue, chats,
-                    orders, paid, revenue, spend);
+                    orders, paid, revenue, spend, detailsDone, placeTapped, placeFailed, payPageSeen, paidClaimsSent);
         }
     }
 }

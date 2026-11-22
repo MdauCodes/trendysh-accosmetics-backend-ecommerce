@@ -25,7 +25,8 @@ public final class TrafficDtos {
     /** The id is null when the visit was not kept (a bot, or too many from one address). */
     public record VisitResponse(UUID id) {}
 
-    public record EventRequest(@NotNull @Size(max = 24) String kind, @PositiveOrZero BigDecimal value) {}
+    public record EventRequest(@NotNull @Size(max = 24) String kind, @PositiveOrZero BigDecimal value,
+                               @Size(max = 24) String detail) {}
 
     /** A row of the report: a channel, or one source inside it. Money is KES; revenue counts paid orders' products only. */
     public record SourceRow(
@@ -40,7 +41,12 @@ public final class TrafficDtos {
             long orders,
             long paidOrders,
             BigDecimal revenue,
-            BigDecimal spend) {}
+            BigDecimal spend,
+            long detailsDone,
+            long placeTapped,
+            long placeFailed,
+            long payPageSeen,
+            long paidClaimsSent) {}
 
     public record DayRow(LocalDate day, long visits, long paidOrders, BigDecimal revenue,
                          BigDecimal adsRevenue, BigDecimal spend) {}

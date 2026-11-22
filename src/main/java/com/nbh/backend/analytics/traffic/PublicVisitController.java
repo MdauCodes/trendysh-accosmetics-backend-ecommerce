@@ -43,7 +43,7 @@ public class PublicVisitController {
     public ResponseEntity<Void> event(@PathVariable UUID visitId, @Valid @RequestBody EventRequest request,
                                       HttpServletRequest http) {
         if (!TrafficService.isBot(http.getHeader("User-Agent")) && throttle.allow(address(http))) {
-            traffic.recordEvent(visitId, request.kind(), request.value());
+            traffic.recordEvent(visitId, request.kind(), request.value(), request.detail());
         }
         return ResponseEntity.noContent().build();
     }
