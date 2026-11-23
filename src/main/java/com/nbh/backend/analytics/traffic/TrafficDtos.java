@@ -5,6 +5,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -58,4 +59,16 @@ public final class TrafficDtos {
 
     public record SpendRequest(@NotNull LocalDate day, @NotNull @Size(max = 24) String channel,
                                @NotNull @PositiveOrZero BigDecimal amountKes, @Size(max = 200) String note) {}
+
+    public record ExitReasonRequest(@NotNull @Size(max = 24) String step, @NotNull @Size(max = 32) String reason,
+                                    @Size(max = 5000) String note) {}
+
+    public record DropoffFunnelRow(String channel, long checkoutStarted, long reviewReached, long placeTapped,
+                                   long placeFailed, long ordered, long paidClaimSent) {}
+
+    public record DropoffReasonRow(String channel, String step, String reason, long count) {}
+
+    public record DropoffNote(Instant at, String channel, String step, String reason, String note) {}
+
+    public record DropoffReport(List<DropoffFunnelRow> funnel, List<DropoffReasonRow> reasons, List<DropoffNote> notes) {}
 }

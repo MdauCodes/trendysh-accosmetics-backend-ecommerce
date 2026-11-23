@@ -48,7 +48,7 @@ public class TrafficService {
             Pattern.CASE_INSENSITIVE);
     private static final String PAID = "('PAID','PICKING','READY','DISPATCHED','DELIVERED')";
     /** Same rule as the Analytics page: real orders, or the demo ones while demo data is switched on. */
-    private static final String REAL_OR_DEMO = """
+    static final String REAL_OR_DEMO = """
             ((o.is_mock_data AND EXISTS (SELECT 1 FROM product mp WHERE mp.is_mock_data AND mp.is_published))
               OR (NOT o.is_mock_data AND NOT EXISTS (SELECT 1 FROM product mp WHERE mp.is_mock_data AND mp.is_published)))""";
 

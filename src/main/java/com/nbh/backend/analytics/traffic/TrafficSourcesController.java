@@ -1,5 +1,6 @@
 package com.nbh.backend.analytics.traffic;
 
+import com.nbh.backend.analytics.traffic.TrafficDtos.DropoffReport;
 import com.nbh.backend.analytics.traffic.TrafficDtos.SourcesReport;
 import com.nbh.backend.analytics.traffic.TrafficDtos.SpendRequest;
 import com.nbh.backend.analytics.traffic.TrafficDtos.SpendRow;
@@ -27,9 +28,20 @@ public class TrafficSourcesController {
     private static final int MAX_DAYS = 400;
 
     private final TrafficService traffic;
+    private final ExitReasonService exitReasons;
 
-    public TrafficSourcesController(TrafficService traffic) {
+    public TrafficSourcesController(TrafficService traffic, ExitReasonService exitReasons) {
         this.traffic = traffic;
+        this.exitReasons = exitReasons;
+    }
+
+    /** Where shoppers stop in checkout, per channel, with the reasons they gave when they left. */
+    @PreAuthorize("hasAuthority('PERM_ANALYTICS_VIEW')")
+    @GetMapping("/checkout-dropoff")
+    public DropoffReport checkoutDropoff(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        LocalDate start = from.isBefore(to.minusDays(MAX_DAYS)) ? to.minusDays(MAX_DAYS) : from;
+        return exitReasons.dropoff(start, to);
     }
 
     @PreAuthorize("hasAuthority('PERM_ANALYTICS_VIEW')")

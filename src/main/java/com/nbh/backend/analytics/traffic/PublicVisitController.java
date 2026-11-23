@@ -1,6 +1,7 @@
 package com.nbh.backend.analytics.traffic;
 
 import com.nbh.backend.analytics.traffic.TrafficDtos.EventRequest;
+import com.nbh.backend.analytics.traffic.TrafficDtos.ExitReasonRequest;
 import com.nbh.backend.analytics.traffic.TrafficDtos.VisitRequest;
 import com.nbh.backend.analytics.traffic.TrafficDtos.VisitResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,10 +25,12 @@ import java.util.UUID;
 public class PublicVisitController {
 
     private final TrafficService traffic;
+    private final ExitReasonService exitReasons;
     private final VisitThrottle throttle;
 
-    public PublicVisitController(TrafficService traffic, VisitThrottle throttle) {
+    public PublicVisitController(TrafficService traffic, ExitReasonService exitReasons, VisitThrottle throttle) {
         this.traffic = traffic;
+        this.exitReasons = exitReasons;
         this.throttle = throttle;
     }
 
@@ -44,6 +47,16 @@ public class PublicVisitController {
                                       HttpServletRequest http) {
         if (!TrafficService.isBot(http.getHeader("User-Agent")) && throttle.allow(address(http))) {
             traffic.recordEvent(visitId, request.kind(), request.value(), request.detail());
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Why the shopper left checkout. Always 204; unknown values, bots and floods are dropped without a word. */
+    @PostMapping("/{visitId}/exit-reasons")
+    public ResponseEntity<Void> exitReason(@PathVariable UUID visitId, @Valid @RequestBody ExitReasonRequest request,
+                                           HttpServletRequest http) {
+        if (!TrafficService.isBot(http.getHeader("User-Agent")) && throttle.allow(address(http))) {
+            exitReasons.record(visitId, request.step(), request.reason(), request.note());
         }
         return ResponseEntity.noContent().build();
     }

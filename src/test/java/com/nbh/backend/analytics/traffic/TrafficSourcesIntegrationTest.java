@@ -241,4 +241,83 @@ class TrafficSourcesIntegrationTest {
                 .andReturn().getResponse().getStatus();
         assertThat(status).isIn(401, 403);
     }
+
+    private int exitReason(String visitId, String body) throws Exception {
+        return mvc.perform(post("/api/v1/public/visits/" + visitId + "/exit-reasons").header("User-Agent", BROWSER)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().getResponse().getStatus();
+    }
+
+    private static JsonNode row(JsonNode rows, String channel, String field, String value) {
+        for (JsonNode r : rows) {
+            if (channel.equals(r.get("channel").asText()) && (field == null || value.equals(r.get(field).asText()))) return r;
+        }
+        return null;
+    }
+
+    @Test
+    void exitReasonsAreKeptScrubbedCappedAndReported() throws Exception {
+        // OTHER_PAID is used by no other test, so the report's counts for it are ours alone.
+        String v = visit(UUID.randomUUID(), "OTHER_PAID", "exit-test", BROWSER);
+        UUID visit = UUID.fromString(v);
+
+        assertThat(exitReason(v, "{\"step\":\"REVIEW\",\"reason\":\"DELIVERY_FEE_HIGH\","
+                + "\"note\":\"  too   dear, mail me a@b.com or call 0712 345-678  \"}")).isEqualTo(204);
+        assertThat(exitReason(v, "{\"step\":\"DETAILS\",\"reason\":\"NO_ANSWER\"}")).isEqualTo(204);
+        assertThat(exitReason(v, "{\"step\":\"NOWHERE\",\"reason\":\"OTHER\"}")).isEqualTo(204);
+        assertThat(exitReason(v, "{\"step\":\"CART\",\"reason\":\"MADE_UP\"}")).isEqualTo(204);
+        assertThat(exitReason(v, "{\"step\":\"CART\",\"reason\":\"PRICE_HIGH\"}")).isEqualTo(204);
+        assertThat(exitReason(v, "{\"step\":\"CART\",\"reason\":\"OTHER\"}")).as("4th valid is ignored").isEqualTo(204);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM checkout_exit_reason WHERE visit_id = ?", Long.class, visit)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT note FROM checkout_exit_reason WHERE visit_id = ? AND reason = 'DELIVERY_FEE_HIGH'",
+                String.class, visit)).isEqualTo("too dear, mail me [email] or call [number]");
+
+        // An unknown visit is still kept, without a visit.
+        long before = jdbc.queryForObject("SELECT COUNT(*) FROM checkout_exit_reason WHERE visit_id IS NULL", Long.class);
+        assertThat(exitReason(UUID.randomUUID().toString(), "{\"step\":\"CART\",\"reason\":\"JUST_LOOKING\"}")).isEqualTo(204);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM checkout_exit_reason WHERE visit_id IS NULL", Long.class)).isEqualTo(before + 1);
+        // Bots store nothing.
+        assertThat(mvc.perform(post("/api/v1/public/visits/" + v + "/exit-reasons").header("User-Agent", "Googlebot/2.1")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"step\":\"CART\",\"reason\":\"OTHER\"}"))
+                .andReturn().getResponse().getStatus()).isEqualTo(204);
+
+        for (String e : new String[] {"CHECKOUT_STARTED", "CHECKOUT_STARTED", "CHECKOUT_DETAILS_DONE", "CHECKOUT_PLACE_TAPPED",
+                "CHECKOUT_PLACE_FAILED", "CHECKOUT_PLACE_FAILED", "ORDER_PAID_CLAIM_SENT"}) {
+            ok(post("/api/v1/public/visits/" + v + "/events").header("User-Agent", BROWSER)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"kind\":\"" + e + "\"}"), false);
+        }
+        checkout(v);
+
+        LocalDate today = LocalDate.now(ZoneId.of("Africa/Nairobi"));
+        JsonNode report = ok(get("/api/v1/admin/analytics/checkout-dropoff?from=" + today + "&to=" + today), true);
+        JsonNode f = row(report.get("funnel"), "OTHER_PAID", null, null);
+        assertThat(f).isNotNull();
+        assertThat(f.get("checkoutStarted").asLong()).isEqualTo(2);
+        assertThat(f.get("reviewReached").asLong()).isEqualTo(1);
+        assertThat(f.get("placeTapped").asLong()).isEqualTo(1);
+        assertThat(f.get("placeFailed").asLong()).isEqualTo(2);
+        assertThat(f.get("ordered").asLong()).isEqualTo(1);
+        assertThat(f.get("paidClaimSent").asLong()).isEqualTo(1);
+
+        JsonNode fee = row(report.get("reasons"), "OTHER_PAID", "reason", "DELIVERY_FEE_HIGH");
+        assertThat(fee).isNotNull();
+        assertThat(fee.get("step").asText()).isEqualTo("REVIEW");
+        assertThat(fee.get("count").asLong()).isEqualTo(1);
+        assertThat(row(report.get("reasons"), "OTHER_PAID", "reason", "NO_ANSWER").get("count").asLong()).isEqualTo(1);
+        assertThat(row(report.get("reasons"), "OTHER_PAID", "reason", "OTHER")).as("4th was ignored").isNull();
+        assertThat(row(report.get("reasons"), "UNKNOWN", "reason", "JUST_LOOKING")).isNotNull();
+
+        JsonNode note = row(report.get("notes"), "OTHER_PAID", "reason", "DELIVERY_FEE_HIGH");
+        assertThat(note).isNotNull();
+        assertThat(note.get("note").asText()).isEqualTo("too dear, mail me [email] or call [number]");
+        assertThat(note.get("at").isNull()).isFalse();
+        for (JsonNode n : report.get("notes")) assertThat(n.get("note").isNull()).isFalse();
+    }
+
+    @Test
+    void theDropoffReportIsForStaffOnly() throws Exception {
+        LocalDate today = LocalDate.now(ZoneId.of("Africa/Nairobi"));
+        assertThat(mvc.perform(get("/api/v1/admin/analytics/checkout-dropoff?from=" + today + "&to=" + today))
+                .andReturn().getResponse().getStatus()).isIn(401, 403);
+    }
 }
