@@ -2324,7 +2324,7 @@ endpoint (needs bank credentials), reconciliation job, underpay/overpay/late-pay
 handling (`PAYMENT_REVIEW` status), SMS, refunds. Everything must stay
 append-only and eTIMS-compatible (every payment recorded, nothing deleted).
 Local test DB: `DB_URL=jdbc:postgresql://localhost:5432/nairobi_beauty_hub_test
-DB_PASSWORD=janet-marketing` (a dev DB `nairobi_beauty_hub` does not exist).
+DB_PASSWORD=mdaucodes` (a dev DB `nairobi_beauty_hub` does not exist).
 
 
 **Active multi-session plan:** `C:\Users\ADMIN\.claude\NairobiBeautyHub_Integration_Readiness_Plan.md`

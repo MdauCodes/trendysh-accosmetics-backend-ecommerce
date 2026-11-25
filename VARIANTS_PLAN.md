@@ -322,7 +322,7 @@ Each item: `{key, severity: CRITICAL|ACTION|INFO, title, detail, productId?, job
   - SKUs: `ProductService.nextSku`.
   - Live updates: publish `DataChangedEvent` with a new staff-only topic `VARIANT_JOBS` (add it to `Topic` and to `isPublic()`'s exclusions). Listeners use `fallbackExecution = true`, so publishing from the worker thread works.
   - `@EnableScheduling` is already on. The test profile pushes sweepers' initial delays out an hour; do the same for the job poller and call it directly in tests.
-- **Local tests:** run with `DB_PASSWORD=janet-marketing` (see the HANDOFF). The full suite was 964 after Phase 2.
+- **Local tests:** run with `DB_PASSWORD=mdaucodes` (see the HANDOFF). The full suite was 964 after Phase 2.
 
 ## 4. Phases
 
