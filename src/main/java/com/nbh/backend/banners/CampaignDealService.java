@@ -564,10 +564,12 @@ public class CampaignDealService implements LiveDeals {
                 throw new UnprocessableException(p.getName() + " is in this campaign twice. Keep one deal for it.");
             }
             already.add(i.variantId());
-            // A deal of this campaign for the same product and option is kept (same id); anything else is new.
+            // A deal of this campaign for the same product and option is kept (same id); so is a whole-product deal that
+            // staff split into one deal per size (its id stays with the first size). Anything else is new.
             CampaignDeal old = i.id() == null ? null : mine.get(i.id());
             boolean keep = old != null && old.getProductId().equals(p.getId())
-                    && Objects.equals(old.getVariantId(), i.variantId()) && reused.add(old.getId());
+                    && (old.getVariantId() == null || Objects.equals(old.getVariantId(), i.variantId()))
+                    && reused.add(old.getId());
             CampaignDeal d = keep ? old : new CampaignDeal();
             d.setBannerId(b.getId());
             d.setProductId(p.getId());
