@@ -233,4 +233,84 @@ class CampaignIntegrationTest {
         JsonNode on = ok(get("/api/v1/cart").header("X-Cart-Session", session), null, false);
         assertThat(on.get("subtotal").decimalValue()).isEqualByComparingTo("900");
     }
+
+    @Test
+    void savingACampaignAgainKeepsItsDealAndWhatItSold() throws Exception {
+        Made cream = product(20, "1000");
+        JsonNode first = campaign("Keep " + UUID.randomUUID().toString().substring(0, 5),
+                "[{\"productId\":\"" + cream.productId() + "\",\"type\":\"PERCENT\",\"percentOff\":10,\"capQty\":9}]", true);
+        String bannerId = first.get("id").asText();
+        String dealId = first.path("campaign").path("deals").get(0).path("id").asText();
+
+        String session = UUID.randomUUID().toString();
+        addToCart(session, cream.variantIds()[0], 2);
+        String body = """
+                {"customerName":"Wanjiku Mwangi","guestEmail":"t-%s@example.com","guestPhone":"07%08d",
+                 "fulfilmentType":"PICKUP"}
+                """.formatted(UUID.randomUUID().toString().substring(0, 8), ThreadLocalRandom.current().nextInt(100_000_000));
+        MvcResult order = mvc.perform(post("/api/v1/checkout").header("X-Cart-Session", session)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn();
+        assertThat(order.getResponse().getStatus()).as(order.getResponse().getContentAsString()).isIn(200, 201);
+        campaigns.forget();
+        JsonNode before = ok(get("/api/v1/admin/promo-banners/" + bannerId), null, true);
+        assertThat(before.path("campaign").path("deals").get(0).path("sold").decimalValue()).isEqualByComparingTo("2");
+
+        // saved again with the deal's id and a new limit: same deal, same orders, the count carries on
+        JsonNode again = ok(put("/api/v1/admin/promo-banners/" + bannerId + "/campaign"),
+                "{\"deals\":[{\"id\":\"" + dealId + "\",\"productId\":\"" + cream.productId()
+                        + "\",\"type\":\"PERCENT\",\"percentOff\":15,\"capQty\":20}]}", true);
+        JsonNode deal = again.path("campaign").path("deals").get(0);
+        assertThat(deal.path("id").asText()).isEqualTo(dealId);
+        assertThat(deal.path("percentOff").decimalValue()).isEqualByComparingTo("15");
+        assertThat(deal.path("capQty").asInt()).isEqualTo(20);
+        assertThat(deal.path("sold").decimalValue()).isEqualByComparingTo("2");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM customer_order_item WHERE campaign_deal_id = ?::uuid",
+                Integer.class, dealId)).isEqualTo(1);
+
+        // without the id it is a new deal and the old one goes
+        JsonNode fresh = ok(put("/api/v1/admin/promo-banners/" + bannerId + "/campaign"),
+                "{\"deals\":[{\"productId\":\"" + cream.productId()
+                        + "\",\"type\":\"PERCENT\",\"percentOff\":15}]}", true);
+        assertThat(fresh.path("campaign").path("deals").get(0).path("id").asText()).isNotEqualTo(dealId);
+        assertThat(fresh.path("campaign").path("deals").get(0).path("sold").decimalValue()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void theSplitMigrationGivesEachSizeOfAMixedPriceProductItsOwnDeal() throws Exception {
+        Made sizes = product(5, "100", "200", "300");
+        Made same = product(5, "150", "150");
+        JsonNode saved = campaign("Split " + UUID.randomUUID().toString().substring(0, 5),
+                "[{\"productId\":\"" + sizes.productId() + "\",\"type\":\"PERCENT\",\"percentOff\":20,\"capQty\":7},"
+                        + "{\"productId\":\"" + same.productId() + "\",\"type\":\"AMOUNT\",\"amountOff\":50}]", false);
+        String bannerId = saved.get("id").asText();
+        UUID original = UUID.fromString(saved.path("campaign").path("deals").get(0).path("id").asText());
+
+        String sql = new String(new org.springframework.core.io.ClassPathResource(
+                "db/migration/V106__split_mixed_price_deals.sql").getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        jdbc.execute(sql);
+
+        var rows = jdbc.queryForList("SELECT id, product_id::text AS product_id, variant_id::text AS variant_id, deal_type,"
+                + " percent_off, amount_off, cap_qty, position FROM campaign_deal WHERE banner_id = ?::uuid ORDER BY position",
+                bannerId);
+        assertThat(rows).hasSize(4);
+        // sizes 1..3 first, in size order, then the same-price product, left as one product-wide deal
+        for (int i = 0; i < 3; i++) {
+            assertThat(rows.get(i).get("product_id")).isEqualTo(sizes.productId());
+            assertThat(rows.get(i).get("variant_id")).isEqualTo(sizes.variantIds()[i]);
+            assertThat(rows.get(i).get("deal_type")).isEqualTo("PERCENT");
+            assertThat(((java.math.BigDecimal) rows.get(i).get("percent_off"))).isEqualByComparingTo("20");
+            assertThat(rows.get(i).get("cap_qty")).isEqualTo(7);
+            assertThat(rows.get(i).get("position")).isEqualTo(i);
+        }
+        assertThat(rows.get(0).get("id")).isEqualTo(original);
+        assertThat(rows.get(3).get("product_id")).isEqualTo(same.productId());
+        assertThat(rows.get(3).get("variant_id")).isNull();
+        assertThat(rows.get(3).get("position")).isEqualTo(3);
+
+        // running it again changes nothing: every deal now names its size
+        jdbc.execute(sql);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM campaign_deal WHERE banner_id = ?::uuid", Integer.class, bannerId))
+                .isEqualTo(4);
+    }
 }

@@ -97,8 +97,11 @@ public class CampaignDealService implements LiveDeals {
 
     // ---------------------------------------------------------------- shapes
 
-    /** One deal as staff set it. {@code variantId} null = every option of the product. */
-    public record DealInput(UUID productId, UUID variantId, String type, BigDecimal percentOff, BigDecimal amountOff,
+    /**
+     * One deal as staff set it. {@code id} is the deal's own id when it is already saved (so saving again keeps it, its
+     * orders and its sold count); null = a new deal. {@code variantId} null = every option of the product.
+     */
+    public record DealInput(UUID id, UUID productId, UUID variantId, String type, BigDecimal percentOff, BigDecimal amountOff,
                             Integer buyQty, Integer freeQty, Integer capQty, Instant endsAt) {}
 
     /**
@@ -500,9 +503,13 @@ public class CampaignDealService implements LiveDeals {
                     : slugOf(in.slug());
             b.setSlug(uniqueSlug(slug, b.getId()));
             if (in.deals() != null) {
-                List<CampaignDeal> next = checked(b, in.deals());
+                List<CampaignDeal> existing = deals.findByBannerIdOrderByPositionAsc(b.getId());
+                List<CampaignDeal> next = checked(b, in.deals(), existing);
                 requireNoClash(b, next);
-                deals.deleteAll(deals.findByBannerIdOrderByPositionAsc(b.getId()));
+                // Deals staff kept are updated in place (their id keeps the orders and caps); only the rest go.
+                Set<UUID> kept = new HashSet<>();
+                next.forEach(d -> { if (d.getId() != null) kept.add(d.getId()); });
+                deals.deleteAll(existing.stream().filter(d -> !kept.contains(d.getId())).toList());
                 deals.flush();
                 deals.saveAll(next);
             }
@@ -526,7 +533,10 @@ public class CampaignDealService implements LiveDeals {
         return v;
     }
 
-    private List<CampaignDeal> checked(PromoBanner b, List<DealInput> inputs) {
+    private List<CampaignDeal> checked(PromoBanner b, List<DealInput> inputs, List<CampaignDeal> existing) {
+        Map<UUID, CampaignDeal> mine = new HashMap<>();
+        existing.forEach(d -> mine.put(d.getId(), d));
+        Set<UUID> reused = new HashSet<>();
         Set<UUID> productIds = new HashSet<>();
         inputs.forEach(i -> {
             if (i.productId() == null) throw new UnprocessableException("Every deal needs a product.");
@@ -554,12 +564,21 @@ public class CampaignDealService implements LiveDeals {
                 throw new UnprocessableException(p.getName() + " is in this campaign twice. Keep one deal for it.");
             }
             already.add(i.variantId());
-            CampaignDeal d = new CampaignDeal();
+            // A deal of this campaign for the same product and option is kept (same id); anything else is new.
+            CampaignDeal old = i.id() == null ? null : mine.get(i.id());
+            boolean keep = old != null && old.getProductId().equals(p.getId())
+                    && Objects.equals(old.getVariantId(), i.variantId()) && reused.add(old.getId());
+            CampaignDeal d = keep ? old : new CampaignDeal();
             d.setBannerId(b.getId());
             d.setProductId(p.getId());
             d.setVariantId(i.variantId());
             d.setPosition(position++);
             d.setEndsAt(i.endsAt());
+            d.setPercentOff(null);
+            d.setAmountOff(null);
+            d.setBuyQty(null);
+            d.setFreeQty(null);
+            d.setCapQty(null);
             if (i.capQty() != null) {
                 if (i.capQty() < 1) throw new UnprocessableException("A limit for " + p.getName() + " must be at least 1 piece.");
                 d.setCapQty(i.capQty());
